@@ -1,0 +1,93 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import networkx as nx
+
+
+def nrmse(correct_values, predicted):
+    mean_corr = np.mean(correct_values)
+    var_corr = np.sum((correct_values - mean_corr) ** 2)
+    error = correct_values - predicted
+    error.clip(lower=error.quantile(q=0.01),upper=error.quantile(q=0.99),inplace=True)
+    var_pred = np.sum(error ** 2)
+    return np.sqrt(var_pred / var_corr)
+
+def calculate_measures(real, estimated):
+    c_m = real.copy()
+    r_m = estimated.copy()
+    np.fill_diagonal(c_m,0.0)
+    np.fill_diagonal(r_m,0.0)
+    c_m.flatten()
+    r_m.flatten()
+    ad_m = c_m + r_m
+    sub_m = c_m - r_m
+    tp = len(ad_m[ad_m==2])
+    tn = len(ad_m[ad_m==0])
+    fp = len(sub_m[sub_m==-1])
+    fn = len(sub_m[sub_m==1])
+
+    precision = tp/(tp+fp)
+    recall = tp/(tp+fn)
+    accuracy = (tp+tn)/(tp+tn+fp+fn)
+    f_score = 2*precision*recall/(precision+recall)
+    mcc = (tp*tn - fp*fn)/np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+    return precision,recall,accuracy,f_score,mcc
+
+
+def plot_network(connectivity_matrix):
+
+    g = nx.DiGraph()
+    k = connectivity_matrix.shape[0]
+    df = pd.DataFrame(connectivity_matrix,index=['x'+str(i) for i in np.arange(1,k+1)],columns=['x'+str(i) for i in np.arange(1,k+1)])
+    edges = [(start,end) for start in df.index for end in df.columns if np.logical_and(df.loc[start,end] != 0, start != end) ]
+    g.add_edges_from(edges)
+    # for row in np.arange(k):
+    #     g.add_node(str(row))
+    #     for col in np.arange(k):
+    #         if connectivity_matrix[row,col] != 0:
+    #             g.add_edge(str(row),str(col))
+
+    pos = nx.shell_layout(g)
+    nx.draw_networkx_nodes(g,pos,node_size=400,label=df.columns,node_color='black',)
+    nx.draw_networkx_labels(g,pos,font_color='r')
+    nx.draw_networkx_edges(g,pos,arrows=True,arrowstyle='->')
+
+    return
+
+def plot_mv_timeseries(xM,save_path=None):
+    fig, axes = plt.subplots(nrows=xM.shape[1], ncols=1)
+    for i in np.arange(axes.shape[0]):
+        axes[i].plot(xM[:, i])
+        axes[i].set_yticklabels([])
+        if i < xM.shape[0] - 1:
+            axes[i].set_xticklabels([])
+    if save_path is not None:
+        plt.savefig(f'{save_path}plot.jpeg')
+    plt.show()
+
+def create_scale_free_networks(k):
+    '''
+    k: number of nodes
+    '''
+    import scipy.stats
+    scipy.stats.powerlaw.rvs(a=2, loc=2, scale=10, size=k)
+    pass
+
+def example_plots():
+    from sklearn.linear_model import LinearRegression,Ridge
+    data = np.array([[1,1],[2,2]])
+    X = data[:,0]
+    y = data[:,1]
+    linear_model = LinearRegression().fit(X=X.reshape(-1,1),y=y)
+    rr_model_01 = Ridge(alpha=0.1).fit(X=X.reshape(-1,1),y=y)
+    rr_model_05 = Ridge(alpha=0.5).fit(X=X.reshape(-1,1),y=y)
+    rr_model_1 = Ridge(alpha=1.0).fit(X=X.reshape(-1,1),y=y)
+
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    plt.scatter(X,y,marker='o',color='black',)
+    plt.plot(np.arange(0.5,3.5),linear_model.predict(np.arange(0.5,3.5).reshape(-1,1)),label='OLS')
+    plt.plot(np.arange(0.5,3.5),rr_model_01.predict(np.arange(0.5,3.5).reshape(-1,1)),label='RR(alpha = 0.1)')
+    plt.plot(np.arange(0.5,3.5),rr_model_05.predict(np.arange(0.5,3.5).reshape(-1,1)),label='RR(alpha = 0.5)')
+    plt.plot(np.arange(0.5,3.5),rr_model_1.predict(np.arange(0.5,3.5).reshape(-1,1)),label='RR(alpha = 1.0)')
+    plt.legend()

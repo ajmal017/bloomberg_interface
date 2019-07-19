@@ -1,0 +1,132 @@
+    <message name="QuoteRequest" msgtype="R" msgcat="QuotationNegotiation">
+      <field name="QuoteReqID" required="Y"/>
+      <field name="OrderCapacity" required="N"/>
+      <component name="QuotReqGrp" required="Y"/>
+      <field name="Text" required="N"/>
+      <field name="PricingNo" required="N"/>
+      <component name="Notes" required="N"/>
+    </message>
+	
+	 <component name="QuotReqGrp">
+      <group name="NoRelatedSym" required="Y">
+        <component name="Instrument" required="Y"/>
+        <field name="Side" required="N"/>
+        <component name="OrderQtyData" required="N"/>
+        <field name="SettlType" required="N"/>
+        <field name="SettlDate" required="N"/>
+        <field name="Currency" required="N"/>
+        <field name="SettlCurrency" required="N"/>
+        <component name="RateSource" required="N"/>
+        <component name="QuotReqLegsGrp" required="N"/>
+        <field name="TrdType" required="N"/>
+        <component name="PriceQualifierGrp" required="N"/>
+        <field name="TransactTime" required="N"/>
+        <component name="SpreadOrBenchmarkCurveData" required="N"/>
+        <field name="PriceType" required="N"/>
+        <field name="Price" required="N"/>
+        <component name="Parties" required="Y"/>
+        <field name="LocateReqd" required="N"/>
+        <field name="TrdSubType" required="N"/>
+        <field name="MarketSegmentID" required="N"/>
+        <field name="OrderOrigination" required="N"/>
+        <component name="PreAllocGrp" required="N"/>
+        <component name="OrderAttributeGrp" required="N"/>
+        <component name="TrdRegPublicationGrp" required="N"/>
+        <field name="Tenor" required="N"/>
+        <field name="DV01" required="N"/>
+        <field name="PriceDescription" required="N"/>
+        <field name="Ccy1MarketType" required="N"/>
+        <field name="Ccy2MarketType" required="N"/>
+      </group>
+    </component>
+	
+	    <component name="Instrument">
+      <field name="Symbol" required="Y"/>
+      <field name="SymbolSfx" required="N"/>
+      <field name="SecurityID" required="N"/>
+      <field name="SecurityIDSource" required="N"/>
+	  <field name="SecurityType" required="N"/>
+	  <field name="Product" required="Y"/>
+      <field name="MaturityDate" required="N"/>
+      <field name="CouponRate" required="N"/>
+      <field name="SecurityDesc" required="N"/>
+      <component name="SecurityXML" required="N"/>
+    </component>
+	
+	<component name="OrderQtyData">
+      <field name="OrderQty" required="N"/>
+    </component>
+	
+	<component name="RateSource">
+      <group name="NoRateSources" required="N">
+        <field name="RateSource" required="N"/>
+        <field name="RateSourceType" required="N"/>
+        <field name="ReferencePage" required="N"/>
+      </group>
+    </component>
+	
+    <component name="QuotReqLegsGrp">
+      <group name="NoLegs" required="N">
+        <component name="InstrumentLeg" required="N"/>
+        <field name="LegOrderQty" required="N"/>
+        <field name="LegSettlType" required="N"/>
+        <field name="LegSettlDate" required="N"/>
+        <field name="LegSettlCurrency" required="N"/>
+        <field name="LegDV01" required="N"/>
+        <component name="LegRefPriceGrp" required="N"/>
+      </group>
+    </component>
+	
+	<component name="PriceQualifierGrp">
+      <group name="NoPriceQualifiers" required="N">
+        <field name="PriceQualifier" required="N"/>
+      </group>
+    </component>
+	
+    <component name="SpreadOrBenchmarkCurveData">
+      <field name="BenchmarkSecurityID" required="N"/>
+      <field name="BenchmarkSecurityIDSource" required="N"/>
+    </component>	
+	
+	<component name="Parties">
+      <group name="NoPartyIDs" required="Y">
+        <field name="PartyID" required="Y"/>
+        <field name="PartyIDSource" required="Y"/>
+        <field name="PartyRole" required="Y"/>
+        <field name="PartyRoleQualifier" required="N"/>
+        <component name="PtysSubGrp" required="N"/>
+      </group>
+    </component>
+	
+	<component name="PreAllocGrp">
+      <group name="NoAllocs" required="N">
+        <field name="AllocAccount" required="N"/>
+        <field name="AllocAcctIDSource" required="N"/>
+        <field name="IndividualAllocID" required="N"/>
+        <field name="AllocLegRefID" required="N"/>
+        <component name="NestedParties" required="N"/>
+        <field name="AllocQty" required="N"/>
+        <field name="AllocSide" required="N"/>
+      </group>
+    </component>
+
+    <component name="OrderAttributeGrp">
+      <group name="NoOrderAttributes" required="N">
+        <field name="OrderAttributeType" required="N"/>
+        <field name="OrderAttributeValue" required="N"/>
+      </group>
+    </component>	
+	
+	<component name="TrdRegPublicationGrp">
+      <group name="NoTrdRegPublications" required="N">
+        <field name="TrdRegPublicationType" required="N"/>
+        <field name="TrdRegPublicationReason" required="N"/>
+      </group>
+    </component>
+	
+	<component name="Notes">
+      <group name="NoNotes" required="N">
+        <field name="NoteType" required="N"/>
+        <field name="NoteText" required="N"/>
+      </group>
+    </component>

@@ -1,0 +1,286 @@
+import numpy as np
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+from causalhenonmaps import coupledhenonmaps,causalhenonmap
+from helpers import nrmse,plot_mv_timeseries
+sns.set()
+
+
+def llp(df, y_col, horizon, m=2, k=7, tau=1, decision_threshold=1, custom_timedelta=7, btest_from='01-01-2015 17:00:00',
+        ols_with_sm=False):
+    '''
+    - original version of LLP
+    - searches k neighbors in the past
+    - predict next value with Ridge Regression instead if OLS
+    :param df: bars dataframe
+    :param m: embedding dimension while looking for neighbors
+    :param k: number of neighbors to look for
+    :return: exit, buy, sell signals
+    '''
+    from sklearn.neighbors import KDTree
+    import datetime
+    import statsmodels.api as sm
+    from sklearn.linear_model import Ridge, RidgeCV
+    from sklearn.linear_model import LinearRegression
+    from sklearn.metrics import mean_squared_error
+
+
+    df_ = df.copy()
+    response_var = df_.columns[y_col]
+    embedding_df = pd.DataFrame()
+    for col in df_.columns:
+        for lag in np.arange(m):
+            col_name = col + 'lag' + str(lag)
+            embedding_df[col_name] = df_[col].shift(lag)
+    embedding_df[response_var] = df_[response_var].shift(-tau)
+    embedding_df.dropna(axis=0, inplace=True)
+
+    response_var_data = embedding_df[response_var]
+    embedding_df.drop([response_var],axis=1,inplace=True)
+
+    split = np.int(0.3 * embedding_df.shape[0])
+    embedded_history = embedding_df.iloc[:split]
+    embedded_test = embedding_df.iloc[split:]
+
+    x_col_train = embedded_history.columns
+    # x_col_train = [col for col in embedded_history.columns if 'lag' in col]
+    search_col = [col for col in x_col_train if 'lag' in col]
+    # search_col = [col for col in x_col_train if response_var not in col]
+
+    '''
+    trading part
+    '''
+    labels = pd.Series()
+    ols_preds = dict()
+    rr_preds = dict()
+    ols_coefs = dict()
+    rr_coefs = dict()
+    std_ols_coef = dict()
+    std_rr_coef = dict()
+    rr_alpha = dict()
+
+    i = 0
+    first_run = True
+    for test_idx in embedded_test.index[:-1]:
+        print(f'LLP - testing bar : {test_idx}')
+        # find the closest neighbors to current bar
+        # neighbors are found by centering them
+        current_bar = embedded_test.loc[test_idx]
+        current_bar_search = current_bar[search_col]
+        embedded_history_neighbors = embedded_history[search_col]
+
+        embedded_history_neigh_center = embedded_history_neighbors.sub(embedded_history_neighbors.mean(axis=1), axis=0)
+        tree = KDTree(embedded_history_neigh_center, leaf_size=1, metric='chebyshev')
+        current_bar_search_centered = current_bar_search.sub(current_bar_search.mean())
+        dists, indices = tree.query(current_bar_search_centered.values.reshape(1, -1), k=k)
+
+        neighbors = embedded_history.iloc[indices[0]]
+        X = neighbors[x_col_train]
+        y = response_var_data.iloc[indices[0]]
+
+        if i >= horizon or first_run:
+            if not first_run:
+                i = 0
+            first_run = False
+            rr_model = RidgeCV(alphas=(0.1, 0.3, 0.5, 1.0), fit_intercept=True,normalize=False).fit(X=X, y=y)
+            rr_alpha[test_idx] = rr_model.alpha_
+            if ols_with_sm:
+                import statsmodels.api as sm
+                Xnew = sm.add_constant(X)
+                ols_model = sm.OLS(y, Xnew).fit()
+
+            else:
+                ols_model = LinearRegression(fit_intercept=True,normalize=False).fit(X=X, y=y)
+
+        # test_x = embedded_test.loc[test_idx][x_col_train]
+        test_x = current_bar.copy()
+        if ols_with_sm:
+            ols_pred = ols_model.predict(np.insert(test_x.values, 0, 1.0))
+            ols_coefs[test_idx] = ols_model.params
+            ols_preds[test_idx] = ols_pred[0]
+            std_ols_coef[test_idx] = ols_coefs[test_idx] * np.std(X, axis=0, ddof=1) / np.std(y, ddof=1)
+        else:
+            ols_pred = ols_model.predict(test_x.values.reshape(1, -1))
+            ols_coefs[test_idx] = ols_model.coef_
+            ols_preds[test_idx] = ols_pred[0]
+            std_ols_coef[test_idx] = ols_coefs[test_idx] * np.std(X, axis=0, ddof=1) / np.std(y, ddof=1)
+
+        ridge_pred = rr_model.predict(test_x.values.reshape(1, -1))
+
+
+        # ridge_model = Ridge(alpha=1.0, fit_intercept=True).fit(X=X, y=y)
+        rr_preds[test_idx] = ridge_pred[0]
+        rr_coefs[test_idx] = rr_model.coef_
+        std_rr_coef[test_idx] = rr_model.coef_ * np.std(X, axis=0, ddof=1) / np.std(y, ddof=1)
+
+        # embedded_history.loc[test_idx] = current_bar
+        embedded_history = embedded_history.append(current_bar)
+        embedded_history.sort_index(ascending=True, inplace=True)
+        embedded_history.drop_duplicates(inplace=True)
+        i += 1
+
+
+    ols_preds = pd.Series(ols_preds, name='ols_preds')
+    rr_preds = pd.Series(rr_preds, name='rr_preds')
+    ols_coefs = pd.DataFrame(ols_coefs).T
+    try:
+        ols_coefs.columns = Xnew.columns
+    except:
+        ols_coefs.columns = X.columns
+    rr_coefs = pd.DataFrame(rr_coefs).T
+    rr_coefs.columns = X.columns
+    std_ols_coef = pd.DataFrame(std_ols_coef).T
+    std_ols_coef.columns = ols_coefs.columns
+    std_rr_coef = pd.DataFrame(std_rr_coef).T
+    std_rr_coef.columns = rr_coefs.columns
+
+    error_metric = pd.concat([response_var_data, ols_preds, rr_preds], axis=1, join='inner')
+    rmse_ols = np.sqrt(np.median((error_metric[response_var] - error_metric['ols_preds']) ** 2))
+    rmse_rr = np.sqrt(np.median((error_metric[response_var] - error_metric['rr_preds']) ** 2))
+
+    # nrmse: normalised root mean square error with the variance of the correct values
+
+    nrmse_ols = nrmse(error_metric[response_var], error_metric['ols_preds'])
+    nrmse_rr = nrmse(error_metric[response_var], error_metric['rr_preds'])
+
+    return labels, response_var_data, ols_preds, rr_preds, ols_coefs, rr_coefs,std_ols_coef,std_rr_coef, rmse_ols, rmse_rr, nrmse_ols, nrmse_rr
+
+
+
+
+
+
+
+def main():
+    write_path = './LLP/FX/'
+    # write_path = './LLP/causalHenon/'
+    # write_path = './LLP/coupledHenon/'
+
+    # from mc_functions import functions
+    # symbols = ['EURGBP', 'GBPCAD', 'EURCAD', 'AUDCAD', 'NZDCAD', 'NZDUSD', 'USDCAD']
+    # data = {}
+    # for symbol in symbols:
+    #     temp = functions.resample_bars(period='4h',symbol=symbol)
+    #     close_values = temp.close
+    #     data[symbol] = close_values
+    # data = pd.DataFrame(data)
+    # data = data[data.index < '2017-07']
+    # data.dropna(axis=0,inplace=True)
+    # data.to_csv(f'{write_path}fx_data.csv')
+    # data_df = data.copy()
+
+    # FX
+    data_df = pd.read_csv(f'{write_path}fx_data.csv')
+    data_df.drop(['time'], axis=1, inplace=True)
+    var_names = data_df.columns
+    k = data_df.shape[1]
+    n = data_df.shape[0]
+    c = ''
+
+
+    # c = 0.1 #coupling strength
+    # n = 2 ** 12 #length of time series
+    # k = 5 #number of time series
+    # # y_col = 0 #column where response variable is
+    # # #COUPLED HENON
+    # # # data = coupledhenonmaps(k=k,c=c,n=n)
+    # # data = causalhenonmap(m=k,c=c,n=n,)
+    # # data_df = pd.DataFrame(columns=['x'+str(i) for i in np.arange(k)],data=data)
+    # # var_names = ['x' + str(i) for i in np.arange(k)]
+
+
+    tau = 1  # predict ahead
+    m = 2  # embedding dimension
+    horizon = 1
+    knn = m*k + 5
+
+    ols_coefs = dict()
+    rr_coefs = dict()
+    std_ols_coefs = dict()
+    std_rr_coefs = dict()
+    rmse_olss = dict()
+    rmse_rrs = dict()
+    nrmse_olss = dict()
+    nrmse_rrs = dict()
+
+    for y_col in np.arange(k):
+        print(f'TESTING VARIABLE:{var_names[y_col]}')
+        labels, test_data, ols_pred, rr_pred, ols_coef, rr_coef, std_ols_coef, std_rr_coef, rmse_ols, rmse_rr, nrmse_ols, nrmse_rr = llp(
+            df=data_df, m=m, k=knn, y_col=y_col, tau=tau, ols_with_sm=False,horizon=horizon)
+        if 'const' in ols_coef.columns:
+            ols_coefs[y_col] = np.median(ols_coef.iloc[:, 1:], axis=0)
+            std_ols_coefs[y_col] = np.median(std_ols_coef.iloc[:, 1:], axis=0)
+        else:
+            ols_coefs[y_col] = np.median(ols_coef, axis=0)
+            std_ols_coefs[y_col] = np.median(std_ols_coef, axis=0)
+        rr_coefs[y_col] = np.median(rr_coef, axis=0)
+        std_rr_coefs[y_col] = np.median(std_rr_coef, axis=0)
+        rmse_olss[y_col] = rmse_ols
+        rmse_rrs[y_col] = rmse_rr
+        nrmse_olss[y_col] = nrmse_ols
+        nrmse_rrs[y_col] = nrmse_rr
+    pd.DataFrame(ols_coefs).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}ols_coefs.csv')
+    pd.DataFrame(rr_coefs).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}rr_coefs.csv')
+    pd.DataFrame(std_ols_coefs).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}std_ols_coefs.csv')
+    pd.DataFrame(std_rr_coefs).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}std_rr_coefs.csv')
+    pd.Series(rmse_olss).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}rmse_ols.csv')
+    pd.Series(rmse_rrs).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}rmse_rr.csv')
+    pd.Series(nrmse_olss).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}nrmse_ols.csv')
+    pd.Series(nrmse_rrs).to_csv(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}nrmse_rr.csv')
+
+    pd.Series(rmse_olss, name='RMSE_OLS').plot(marker='o')
+    pd.Series(rmse_rrs, name='RMSE_RR').plot(marker='o')
+    plt.legend()
+    plt.xticks(np.arange(k), var_names)
+    plt.xlabel(f'Response Variable')
+    plt.ylabel('RMSE')
+    plt.title(f'{write_path.strip("LLP./")} - VAR_{k}({m-1})\nc={c} - knn={knn} - m={m} - horizon={horizon}')
+    plt.savefig(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}RMSE.jpeg')
+
+    plt.clf()
+    pd.Series(nrmse_olss, name='NRMSE_OLS').plot(marker='o')
+    pd.Series(nrmse_rrs, name='NRMSE_RR').plot(marker='o')
+    plt.legend()
+    plt.xticks(np.arange(k), var_names)
+    plt.xlabel(f'Response Variable')
+    plt.ylabel('NRMSE')
+    plt.title(f'{write_path.strip("LLP./")} - VAR_{k}({m-1})\nc={c} - knn={knn} - m={m} - horizon={horizon}')
+    plt.savefig(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}NRMSE.jpeg')
+
+    # plot Coefs
+    if 'const' in ols_coef.columns:
+        ols_coef.drop(['const'],axis=1,inplace=True)
+    var_names_ = ols_coef.columns
+    for i in np.arange(k):
+        df_coefs = pd.DataFrame({'OLS_coefs': ols_coefs[i], 'RR_coefs': rr_coefs[i]},
+                                index=var_names_)
+        df_coefs.plot.bar(rot=60)
+        plt.suptitle(f'ResponseVar\n{var_names[i]}', fontsize=18)
+        plt.gcf().subplots_adjust(bottom=0.20)
+        plt.savefig(f'{write_path}k{k}n{n}knn{knn}c{c}hor{horizon}coef_{var_names[i]}.jpeg')
+        plt.clf()
+        #std coefs
+        df_std_coefs = pd.DataFrame({'OLS_std_coefs': std_ols_coefs[i], 'RR_std_coefs': std_rr_coefs[i]},
+                                index=var_names_)
+        df_std_coefs.plot.bar(rot=60)
+        plt.suptitle(f'ResponseVar\n{var_names[i]}', fontsize=18)
+        plt.gcf().subplots_adjust(bottom=0.20)
+        plt.savefig(f'{write_path}k{k}m{m}n{n}knn{knn}c{c}hor{horizon}std_coef_{var_names[i]}.jpeg')
+
+    print(1)
+
+
+if __name__ == '__main__':
+    main()
+
+# preds_df = pd.DataFrame(preds,dtype=np.float32).T
+# preds_df.columns = ['pred']
+# preds_df.reset_index(inplace=True)
+# preds_df.drop(['index'],axis=1,inplace=True)
+# preds_df['true'] = pd.DataFrame(test_data[embedding_dim:])
+# preds_df['error'] = np.sqrt((preds_df.pred - preds_df.true)**2)
+# preds_df[['pred','true']].plot()
+# preds_df['error'].mean()
+print(1)

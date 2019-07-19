@@ -4,11 +4,15 @@ import _thread
 import argparse
 import datetime
 import quickfix as fix
+import quickfix50sp2 as fix50sp2
 import pandas as pd
 import numpy as np
 import os
 import json
 import filelock
+from pandas.tseries.offsets import BDay
+import gc
+
 
 FLOAT_FORMAT = '%.5f'
 DATE_FORMAT = '%Y%m%d%H%M'
@@ -19,6 +23,8 @@ class Application(fix.Application):
     execID = 100
     orders_dict = dict()
     active_orders = dict()
+    limit_price = 0.
+    timeframe = 5
     # write_path = './'
     write_path = r'\\10.10.1.13\Omni/Bloomberg'
     ord_status_dict = {'0':'new',
@@ -29,7 +35,13 @@ class Application(fix.Application):
                        '6':'pending_cancel',
                        '8':'rejected'}
 
+    def genOrderID(self):
+        self.orderID = self.orderID+1
+        return str(self.orderID)
 
+    def genExecID(self):
+        self.execID = self.execID+1
+        return str(self.execID)
 
     def gen_ord_id(self):
         global orderID
@@ -55,21 +67,22 @@ class Application(fix.Application):
         self.sessionID = sessionID
         self.message = message
 
-        print(f'-> ADMIN...{self.message}')
-
-        if os.path.exists(f'{self.write_path}admin_messages.csv'):
-            admin_df = pd.read_csv(f'{self.write_path}admin_messages.csv',index_col=0)
-            admin_df = admin_df.append({'message':self.message},ignore_index=True)
-            admin_df.to_csv(f'{self.write_path}admin_messages.csv')
-        else:
-            admin_df = pd.DataFrame(columns=['message'])
-            app_df = pd.DataFrame(columns=['message'])
-            admin_df = admin_df.append({'message':self.message},ignore_index=True)
-            admin_df.to_csv(f'{self.write_path}admin_messages.csv')
-            app_df.to_csv(f'{self.write_path}app_messages.csv')
+        # print(f'-> ADMIN...{self.message}')
+        #
+        # if os.path.exists(f'{self.write_path}admin_messages.csv'):
+        #     admin_df = pd.read_csv(f'{self.write_path}admin_messages.csv',index_col=0)
+        #     admin_df = admin_df.append({'message':self.message},ignore_index=True)
+        #     admin_df.to_csv(f'{self.write_path}admin_messages.csv')
+        # else:
+        #     admin_df = pd.DataFrame(columns=['message'])
+        #     app_df = pd.DataFrame(columns=['message'])
+        #     admin_df = admin_df.append({'message':self.message},ignore_index=True)
+        #     admin_df.to_csv(f'{self.write_path}admin_messages.csv')
+        #     app_df.to_csv(f'{self.write_path}app_messages.csv')
 
         if self.message.getHeader().getField(35) == '0':
-            print('->HrtBt')
+            pass
+            # print('->HrtBt')
         return
 
     def fromAdmin(self,  message, sessionID):
@@ -77,260 +90,270 @@ class Application(fix.Application):
         self.sessionID = sessionID
         self.message = message
 
-        print(f'<- ADMIN...{self.message}')
-
-        if os.path.exists(f'{self.write_path}admin_messages.csv'):
-            admin_df = pd.read_csv(f'{self.write_path}admin_messages.csv',index_col=0)
-            admin_df = admin_df.append({'message':self.message},ignore_index=True)
-            admin_df.to_csv(f'{self.write_path}admin_messages.csv')
-        else:
-            admin_df = pd.DataFrame(columns=['message'])
-            app_df = pd.DataFrame(columns=['message'])
-            admin_df = admin_df.append({'message':self.message},ignore_index=True)
-            admin_df.to_csv(f'{self.write_path}admin_messages.csv')
-            app_df.to_csv(f'{self.write_path}app_messages.csv')
-
-
-        if self.message.getHeader().getField(35) == '0':
-            print('<-HrtBt')
+        # print(f'<- ADMIN...{self.message}')
+        #
+        # if os.path.exists(f'{self.write_path}admin_messages.csv'):
+        #     admin_df = pd.read_csv(f'{self.write_path}admin_messages.csv',index_col=0)
+        #     admin_df = admin_df.append({'message':self.message},ignore_index=True)
+        #     admin_df.to_csv(f'{self.write_path}admin_messages.csv')
+        # else:
+        #     admin_df = pd.DataFrame(columns=['message'])
+        #     app_df = pd.DataFrame(columns=['message'])
+        #     admin_df = admin_df.append({'message':self.message},ignore_index=True)
+        #     admin_df.to_csv(f'{self.write_path}admin_messages.csv')
+        #     app_df.to_csv(f'{self.write_path}app_messages.csv')
+        #
+        #
+        # if self.message.getHeader().getField(35) == '0':
+        #     pass
+        #     # print('<-HrtBt')
         if self.message.getHeader().getField(35) == 'A':
             print('LOGON!')
         return
-
 
     def toApp(self,  message, sessionID):
 
         print (f'-> APP: {message.toString()}' )
 
-        if os.path.exists(f'{self.write_path}app_messages.csv'):
-            app_df = pd.read_csv(f'{self.write_path}app_messages.csv',index_col=0)
-            app_df.to_csv(f'{self.write_path}app_messages.csv')
-        else:
-            app_df = pd.DataFrame(columns=['message'])
-            app_df = app_df.append({'message':self.message},ignore_index=True)
-            app_df.to_csv(f'{self.write_path}app_messages.csv')
+        # if os.path.exists(f'{self.write_path}app_messages.csv'):
+        #     app_df = pd.read_csv(f'{self.write_path}app_messages.csv',index_col=0)
+        #     app_df.to_csv(f'{self.write_path}app_messages.csv')
+        # else:
+        #     app_df = pd.DataFrame(columns=['message'])
+        #     app_df = app_df.append({'message':self.message},ignore_index=True)
+        #     app_df.to_csv(f'{self.write_path}app_messages.csv')
 
         return
 
     def fromApp(self, message, sessionID):
 
-        self.message = message
         print(f'<-APP: {message.toString()}')
 
-        if os.path.exists(f'{self.write_path}app_messages.csv'):
-            app_df = pd.read_csv(f'{self.write_path}app_messages.csv',index_col=0)
-            app_df = app_df.append({'message': self.message}, ignore_index=True)
-            app_df.to_csv(f'{self.write_path}app_messages.csv')
-        else:
-            app_df = pd.DataFrame(columns=['message'])
-            app_df = app_df.append({'message':self.message},ignore_index=True)
-            app_df.to_csv(f'{self.write_path}app_messages.csv')
+        msg_type = message.getHeader().getField(35)
 
-        msg_type = self.message.getHeader().getField(35)
-        exec_type = self.message.getField(150)
+        if msg_type == 'S': #QUOTES
+            dealer_no = 0
+            hit = False
+            parties_no = int(message.getField(453))
+            quote_req_id = message.getField(131)
+            side = quote_req_id[-1]
+            print(f'REQUESTING LIMIT PRICE :{self.limit_price} - {side} ')
+            group_453 = fix50sp2.QuoteRequest().NoRelatedSym().NoPartyIDs()
+            quote_id = message.getField(117)
+            symbol = message.getField(55)
+            product = message.getField(460)
+            quantity = int(message.getField(38))
+            currency = message.getField(15)
 
-        if msg_type == '8' and self.message.getField(20) != '3': # execution report
-            if exec_type in ['0','8'] : # ack or reject
-                self.orders_dict[self.message.getField(11)]['status'] = self.ord_status_dict[self.message.getField(39)]
-                # self.orders_dict[self.message.getField(11)]['price'] = self.message.getField(31)
+            for party_id in range(1, parties_no + 1):
+                message.getGroup(party_id, group_453)
+                if group_453.getField(452) == '1':  # dealer
+                    dealer_no += 1
+                    dealer_id = group_453.getField(448)
+                    bid_px = float(message.getField(132))
+                    offer_px = float(message.getField(133))
 
-                print(f'ORDER_ID:{self.message.getField(11)}')
-                if exec_type == '0':
-                    print('NEW ORDER ACKNOWLEDGED!')
+                    if hit:
+                        self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                                            symbol=symbol, product=product, side=side, dealer_id=dealer_id)
+                        print(f'PRICE FILLED FROM PREVIOUS DEALER - PASS QUOTES FROM {dealer_id}')
+                        continue
+                    print(f'CHECKING QUOTES FROM DEALER: {dealer_id}')
+                    print(f'BID PX:{bid_px} - OFFER PX:{offer_px}')
+
+                    if side == '1': #long
+                        if offer_px <= self.limit_price:
+                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=1,
+                                                symbol=symbol, product=product,side=side,dealer_id=dealer_id,price=self.limit_price)
+                            print(f'BUY at {offer_px} from {dealer_id} - PASS QUOTES FROM OTHER DEALERS')
+                            hit = True
+                            continue
+                        else:
+                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                                                symbol=symbol, product=product, side=side, dealer_id=dealer_id)
+                            print(f'PASSED QUOTES FROM {dealer_id} ')
+                            time.sleep(1)
+                            continue
+                            # if party_id == parties_no:
+                            #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                            #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id) #check other dealers
+                            #     print(f'CURRENT QuoteRequestPassed - REQUEST NEW QUOTES')
+                            #     self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1)
+                            #
+                            # else: #pass current request - send new
+                            #     continue
+                            #     # self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1,)
+
+                    if side == '2':  # long
+                        if bid_px >= self.limit_price:
+                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=1,
+                                                symbol=symbol, product=product, side=side, dealer_id=dealer_id,price=self.limit_price)
+                            print(f'SELL at {bid_px} from {dealer_id} - PASS QUOTES FROM OTHER DEALERS')
+                            hit = True
+                            continue
+                        else:
+                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                                                symbol=symbol, product=product, side=side, dealer_id=dealer_id)
+                            print(f'PASSED QUOTES FROM {dealer_id} ')
+                            time.sleep(10)
+                            continue
+                            # if party_id == parties_no:
+                            #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                            #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id) #check other dealers
+                            #     print(f'CURRENT QuoteRequestPassed - REQUEST NEW QUOTES')
+                            #     self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1)
+                            #
+                            # else: #pass current request - send new
+                            #     continue
+                            #     # self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1,)
+
+                    # if (not hit) and party_id == parties_no: # checked all and did not get the price - send again request
+                    #     self.quote_request(symbol=symbol, currency=currency, quantity=quantity, side=side, order_type=1)
+                    #     print(f'COULD NOT GET PRICE FROM {dealer_no} DEALERS - SEND NEW QUOTE REQUEST ')
+
+                    # bid_spot_rate = message.getField(188)
+                    # offer_spot_rate = message.getField(190)
+
+                    # self.quote_response(quote_req_id=quote_req_id,quote_id=quote_id,quote_resp_type=1,symbol=symbol,
+                    #                     product=product,dealer_id=dealer_id,side=side)
+                    time.sleep(1)
+
                 else:
-                    print(f'NEW ORDER REJECTED!:{self.message.getField(58)}')
+                    continue
+        if msg_type == 'AI':
+            print(f'RECEIVED AI message')
+        if msg_type == '8':
+            print(f'RECEIVED EXECUTION REPORT')
+            ord_status = message.getField(39) #0->NEW,1->PARTIALLY FILLED,2->FILLED,8->REJECTED
+            quantity = message.getField(14)
+            avg_px = message.getField(6)
 
-                if os.path.exists(f'{self.write_path}fix_orders.csv'):
-                    fix_orders = pd.read_csv(f'{self.write_path}fix_orders.csv',index_col=0)
-                    fix_orders.loc[self.message.getField(11)] = self.orders_dict[self.message.getField(11)]
-                    print(f'fix_orders.csv SAVED!')
-                else:
-                    fix_orders = pd.DataFrame(data=self.orders_dict).T
-                    fix_orders.to_csv(f'{self.write_path}fix_orders.csv')
-                    print(f'fix_orders.csv CREATED AND SAVED!')
-
-            if exec_type in ['1','2','4','5','6'] :
-                print(f'EXEC REPORT - TYPE{exec_type}')
-                self.orders_dict[self.message.getField(11)]['status'] = self.ord_status_dict[self.message.getField(39)]
-                self.orders_dict[self.message.getField(11)]['price'] = self.message.getField(31)
-
-                #update status and price in fix_orders.csv
-                fix_orders = pd.read_csv(f'{self.write_path}fix_orders.csv',index_col=0)
-                fix_orders.loc[self.message.getField(11),:] = pd.Series(self.orders_dict[self.message.getField(11)])
-                fix_orders.to_csv(f'{self.write_path}fix_orders.csv')
-                if self.message.getField(20) == '0': #if its new order - get its status
-                    self.order_status_request(cl_ord_id=self.message.getField(11))
-                    print(f'TEST ID REQ FOR ORDER{self.message.getField(11)} SENT')
-            # if exec_type in ['1','2'] and self.message.getField(20) :
-            # # if exec_type in ['1','2'] and (self.message.getField(20) != '3'):
-            #     #get order status request to update fix_report for multicharts
-            #
-            #     self.order_status_request(cl_ord_id=self.message.getField(11))
-            #     print(f'TEST ID REQ FOR ORDER{self.message.getField(11)} SENT')
-            # # if self.message.getField(150) == '2': #answer from order req
-
-        if self.message.getField(20) == '3': #answer from order req
-            print(self.message)
-        else:
-            pass
-
-            print(f'ORDER_ID: {self.message.getField(11)} STATUS RECEIVED!')
-
-
-            current_time = str((pd.to_datetime(message.getHeader().getField(52))+datetime.timedelta(hours=3)).time()).replace(':','')[:-2]+'00'
-            # current_time = message.getHeader().getField(52).replace('-','').replace(':','')[8:]
-            symbol = str(self.message.getField(55)) + '.' + str(self.message.getField(15))
-
-            if self.message.getField(54) == '2':
-                current_position =  (int(self.message.getField(14)) * int(-1))
-            elif self.message.getField(54) == '1':
-                current_position = (int(self.message.getField(14)) * int(1))
-
-            # report_data = {
-            #                #'account':str(self.message.getField(1)),
-            #                 # 'datetime': pd.to_datetime(self.message.getField(11)[:12], format=DATE_FORMAT),
-            #                 'id': current_time,
-            #                 # 'id': self.message.getField(11)[:6],
-            #                'symbol':symbol,
-            #                # 'dd/MM/yyyy': str(self.message.getField(11)[:4] +'/'+self.message.getField(11)[4:6]+'/'+self.message.getField(11)[6:8]),
-            #                # 'hh:mm:ss': str(self.message.getField(11)[8:10] +':'+self.message.getField(11)[10:12]+':'+self.message.getField(11)[12:14]),
-            #                'contracts*marketpos': current_position,
-            #                'open':str(self.message.getField(6))
-            #                }
-
-            # fix_report['account'] = str(self.message.getField(1))
-            # fix_report['symbol'] = self.message.getField(55) + '.' + self.message.getField(15)
-            # fix_report['dd/MM/yyyy'] = self.message.getField(11)[:8]
-            # fix_report['hh:mm:ss'] = self.message.getField(11)[8:14]
-            # fix_report['contracts*marketpos'] = self.message.getField(14) * int(self.message.getField(54))
-            # fix_report['open'] = float(self.message.getField(44))
-
-            if not os.path.exists(f'{self.write_path}fix_report.csv'):
-
-                fix_report = pd.DataFrame(columns=['id','symbol','contracts*marketpos','open'])
-
-                # fix_report = fix_report.append({'id':report_data['id'],'symbol':report_data['symbol'],
-                #                                 'contracts*marketpos':report_data['contracts*marketpos'],'open':report_data['open']},
-                #                                ignore_index=True)
-
-                fix_report = fix_report.append({'id':current_time,'symbol':symbol,
-                                                'contracts*marketpos':current_position,
-                                                'open':self.message.getField(6)},
-                                               ignore_index=True)
-
-                # print(f'contracts*marketpos:{current_position} - {type(current_position)} - {type(self.message.getField(14))} ')
-
-                fix_report.to_csv(f'{self.write_path}fix_report.csv',date_format=DATE_FORMAT)
-                print('FIX REPORT FOR MULTICHARTS CREATED!')
-            else:
-
-                temp_report = pd.read_csv(f'{self.write_path}fix_report.csv')
-
-                if pd.to_datetime(self.message.getField(6571)) > (datetime.datetime.now() + datetime.timedelta(minutes=2)):
-                    current_lot = 0
-                else:
-                    current_lot = temp_report[temp_report.symbol == symbol]['contracts*marketpos']
-
-                updated_lot = int(current_lot) + int(current_position)
-                temp_report['id'] = current_time
-                temp_report['contracts*marketpos'] = updated_lot
-                temp_report.to_csv(f'{self.write_path}fix_report.csv', index=False, date_format=DATE_FORMAT)
-                # report_data['contracts*marketpos'] = updated_lot
-                # fix_report = pd.DataFrame(data=report_data, index=np.arange(100, 101))
-                # fix_report.to_csv(f'{self.write_path}fix_report.csv',index=False,date_format=DATE_FORMAT)
-
-                print('FIX REPORT FOR MULTICHARTS UPDATED!')
-
-            # print('SLEEPING AFTER MULTICHARTS REPORT...')
-            # time.sleep(100)
-
-            # if msg_type == 'H':
-            #     print('EXECUTION REPORT - ORDER STATUS!')
-            #     if self.message.getField(20) == '3':#sanity check (tag 20 = 3 status)
-            #         pass
-            #         # fix_report = pd.DataFrame(columns=['account','symbol','dd/MM/yyyy','hh:mm:ss','contracts*marketpos','open'])
-            #         # fix_report['account'] = self.message.getField(1)
         return
 
-    def genOrderID(self):
-        self.orderID = self.orderID+1
-        return str(self.orderID)
+    def quote_response(self,quote_req_id,quote_id,quote_resp_type,symbol,product,side,dealer_id,price=None):
 
-    def genExecID(self):
-        self.execID = self.execID+1
-        return str(self.execID)
+        #HEADER
+        quote_resp = fix50sp2.QuoteRequest()
+        quote_resp.getHeader().setField(fix.StringField(8,'FIXT.1.1')) #BeginMessage
+        quote_resp.getHeader().setField(fix.StringField(35,'AJ'))#MessageType
+        quote_resp.getHeader().setField(fix.StringField(1128,'9'))  #ApplVerID - FIX50SP2
+        quote_resp.getHeader().setField(fix.StringField(49,'ORP_RESZ_B'))
+        quote_resp.getHeader().setField(fix.StringField(56,'BLPORPBETA'))
+        quote_resp.getHeader().setField(fix.StringField(128,'DOR'))
+        quote_resp.getHeader().setField(fix.SendingTime(1))#52
+        quote_resp.getHeader().setField(fix.StringField(1156,'208'))#ApplExtID
+        quote_resp.getHeader().setField(fix.StringField(1129,'1.5'))#CstmApplVerID
+        quote_resp.getHeader().setField(fix.SendingTime(1))
+        #BODY
+        quote_resp.setField(fix.QuoteRespID(quote_req_id[:-4] + 'RESP' + self.genOrderID()))#693
+        quote_resp.setField(fix.QuoteReqID(quote_req_id))  #131
+        quote_resp.setField(fix.QuoteRespType(quote_resp_type))#694
+        quote_resp.setField(fix.Symbol(symbol))#55
+        quote_resp.setField(fix.Product(int(product)))#460
+        quote_resp.setField(fix.Side(side))#54
+        quote_resp.setField(fix.TransactTime(1))#60
+        quote_resp.setField(fix.SettlType('0'))#63
+        settl_date = datetime.datetime.utcnow()+BDay(n=2)
+        quote_resp.setField(fix.SettlDate(settl_date.strftime('%Y%m%d')))#64
 
-    def put_order(self,security_type,symbol,currency,quantity,side,order_type,account,time_id,price=None):
+        if quote_resp_type == 1:
+            quote_resp.setField(fix.Price(float(price)))
+            quote_resp.setField(fix.QuoteID(quote_id))  # 117
+            quote_resp.setField(fix.ClOrdID(quote_resp.getField(693)+self.genOrderID()))  # 11
 
-        if quantity != 0 :
-            trade = fix.Message()
-            '''
-            STANDARD MESSAGE HEADER
-            Required Tags: 8(BeginString) - 9(BodyLength) - 35(MsgType) - 49(SenderCompID) - 56(TargetCompID) - 34(MsgSeqNum) - 52(SendingTime)
-            '''
-            trade.getHeader().setField(fix.BeginString(fix.BeginString_FIX42)) #
-            trade.getHeader().setField(fix.MsgType(fix.MsgType_NewOrderSingle)) #39=D
-            trade.getHeader().setField(fix.SendingTime(1))
-            trade.getHeader().setField(fix.ApplExtID('228'))#tag 1156
-            # trade.getHeader().setField(fix.CstmApplVerID(''))#tag 1129
-            trade.getHeader().setField(fix.ApplVerID('9'))#tag 1128 - FIX50SP2
-            # unique_order_id = self.genExecID()
-            # print(f'Unique Order ID: {unique_order_id}')
-            # trade.setField(fix.ClOrdID(unique_order_id)) #11=Unique order
+        group_453 = fix50sp2.QuoteRequest().NoRelatedSym().NoPartyIDs()
 
-            trade.setField(fix.HandlInst(fix.HandlInst_AUTOMATED_EXECUTION_ORDER_PUBLIC_BROKER_INTERVENTION_OK)) #21=3 (Manual order), 21=2 automated execution only supported value
-            trade.setField(fix.Symbol(str(symbol))) #55
-            trade.setField(fix.Currency(str(currency))) #15
-            trade.setField(fix.SecurityType(str(security_type))) #167
-            trade.setField(fix.Side(str(side))) #54=1 Buy
-            trade.setField(fix.OrdType(str(order_type))) #40=2 Limit order, 40=1 Market
-            trade.setField(fix.OrderQty(quantity)) #38
-            if order_type != '1': #not market
-                trade.setField(fix.Price(price)) # if market, this tag  should be absent
-            else:
-                price = None
-            trade.setField(fix.Account(str(account)))
-            trade.setField(fix.ExDestination('IDEALPRO'))
-            trade.setField(fix.CustomerOrFirm(0))
-            trade.setField(fix.ClOrdID(time_id+trade.getField(55)+trade.getField(15)+trade.getField(54))) #11=
-            # trade.setField(fix.ClOrdID(datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')+trade.getField(55)+trade.getField(15)+trade.getField(54))) #11=
+        group_453.setField(fix.StringField(448,'7613723'))#PartyID
+        group_453.setField(fix.StringField(447,'D'))#PartyIDSource
+        group_453.setField(fix.PartyRole(11))#452 - PartyRole
+        quote_resp.addGroup(group_453)
 
-            # dnow = datetime.utcnow().strftime('%Y%m%d-%H:%M:%S')
-            # tag = fix.TransactTime() #default = current time, SendingTime does the same thing
-            # tag.setString(dnow.strftime('%Y%m%d-%H:%M:%S'))
-            # trade.setField(tag)
+        group_453.setField(fix.StringField(448,dealer_id))#PartyID
+        group_453.setField(fix.StringField(447,'D'))#PartyIDSource
+        group_453.setField(fix.PartyRole(1))#452 - PartyRole.
+        quote_resp.addGroup(group_453)
 
-            print(f'CREATING THE FOLLOWING ORDER:\n {trade.toString()}')
-            fix.Session.sendToTarget(trade, self.sessionID)
-            self.orders_dict[trade.getField(11)] = {#'id':trade.getField(11),
-                                                    #'datetime': trade.getField(11)[:12],
-                                                    'account':trade.getField(1),
-                                                    'symbol':trade.getField(55)+'.' + trade.getField(15),
-                                                    'qty':trade.getField(38),
-                                                    'ord_type':trade.getField(40),
-                                                    'side':trade.getField(54),
-                                                    'price':price,
-                                                    'status':'sent'
-                                                    }
+        quote_resp.setField(fix.StringField(1300,'XOFF'))#market segment id
+
+        print(f'SENDING QUOTE RESPONSE MESSAGE:\n ')
+        # print(f'SENDING QUOTE RESPONSE MESSAGE:\n {quote_resp.toString()}')
+        fix.Session.sendToTarget(quote_resp, self.sessionID)
+        ####################
+
+    def quote_request(self,symbol,currency,quantity,side,order_type,price=None):
+
+        #HEADER
+        trade = fix50sp2.QuoteRequest()
+        trade.getHeader().setField(fix.StringField(8,'FIXT.1.1')) #BeginMessage
+        trade.getHeader().setField(fix.StringField(35,'R'))#MessageType
+        trade.getHeader().setField(fix.StringField(1128,'9'))  #ApplVerID - FIX50SP2
+        trade.getHeader().setField(fix.StringField(49,'ORP_RESZ_B'))
+        trade.getHeader().setField(fix.StringField(56,'BLPORPBETA'))
+        trade.getHeader().setField(fix.StringField(128,'DOR'))
+        trade.getHeader().setField(fix.SendingTime(1))#52
+        trade.getHeader().setField(fix.StringField(1156,'208'))#ApplExtID
+        trade.getHeader().setField(fix.StringField(1129,'1.5'))#CstmApplVerID
+
+        #BODY
+        trade.setField(fix.QuoteReqID(datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S') + symbol + 'RFQ' + str(side)))  # 131
+
+        group_146 = fix50sp2.QuoteRequest().NoRelatedSym()
+
+        # group_146 = fix.Group(146,1)
+        if '/' not in symbol:
+            group_146.setField(fix.StringField(55,str(symbol[:3]+'/'+symbol[3:])))
         else:
-            print(f'QUANTITY IS 0!\nCHECK FOR STATUS OF LAST ORDER')
-            if os.path.exists(f'{self.write_path}fix_orders.csv'):
-                temp_orders = pd.read_csv(f'{self.write_path}fix_orders.csv',index_col=0)
-                symbol_entries = temp_orders[temp_orders['symbol'] == symbol+'.'+currency]
-                last_symbol_active = symbol_entries[symbol_entries.qty > 0].iloc[-1] #find last entry of the current symbol when position opened
-                new_entry = last_symbol_active.copy()
-                new_id = time_id + last_symbol_active.name[6:]
-                new_entry.name = new_id
-                new_entry['qty'] = 0
-                temp_orders = temp_orders.append(new_entry,ignore_index=False)
-                temp_orders.to_csv(f'{self.write_path}fix_orders.csv',) #update fix_orders.csv with quantity = 0 (nothing happens)
-                self.order_status_request(cl_ord_id=last_symbol_active.name)
-                # self.order_status_request(cl_ord_id=temp_orders.index[-1])
-            else:
-                print(f'QUANTITY IS 0!\n FIX ORDERS FIRST RUN')
-                time.sleep(100)
-            # print('sleeping put order-quantity0...')
-            # time.sleep(100)
+            group_146.setField(fix.StringField(55, str(symbol)))
+        group_146.setField(fix.StringField(167,'FXSPOT'))
+        group_146.setField(fix.IntField(460,4))
+        group_146.setField(fix.SettlType('0'))#SettlType
+        # group_146.setField(fix.StringField(63,'0'))#SettlType
+        settl_date = datetime.datetime.utcnow()+BDay(n=2)
+
+        group_146.setField(fix.SettlDate(settl_date.strftime('%Y%m%d')))#SettlDate
+
+        group_146.setField(fix.OrderQty(quantity))#38 - Qty
+        group_146.setField(fix.StringField(15,str(currency)))#Currency
+        group_146.setField(fix.StringField(54,str(side)))
+
+
+        # trade.setField(fix.NoPartyIDs(4))#453 - NumberOfParties
+
+        group_453 = fix50sp2.QuoteRequest().NoRelatedSym().NoPartyIDs()
+        # group_453 = fix.Group(453,1)
+        group_453.setField(fix.StringField(448,'7613723'))#PartyID
+        group_453.setField(fix.StringField(447,'D'))#PartyIDSource
+        group_453.setField(fix.PartyRole(11))#452 - PartyRole
+        group_146.addGroup(group_453)
+
+        group_453.setField(fix.StringField(448,'BGD1'))#PartyID
+        group_453.setField(fix.StringField(447,'D'))#PartyIDSource
+        group_453.setField(fix.PartyRole(1))#452 - PartyRole.
+        group_146.addGroup(group_453)
+
+        group_453.setField(fix.StringField(448,'DOR1'))#PartyID
+        group_453.setField(fix.StringField(447,'D'))#PartyIDSource
+        group_453.setField(fix.PartyRole(1))#452 - PartyRole.
+        group_146.addGroup(group_453)
+
+        group_453.setField(fix.StringField(448,'DOR2'))#PartyID
+        group_453.setField(fix.StringField(447,'D'))#PartyIDSource
+        group_453.setField(fix.PartyRole(1))#452 - PartyRole.
+        group_146.addGroup(group_453)
+
+        trade.addGroup(group_146)
+        trade.setField(fix.StringField(1300,'XOFF'))#market segment id
+        # trade.setField(fix.StringField(21,'z'))#HandlInst
+
+        if order_type == '2':  # limit
+            trade.setField(fix.Price(float(price)))  # if market, this tag  should be absent
+        else:
+            price = None
+
+        print(f'CREATING THE FOLLOWING ORDER:\n ')
+        # print(f'CREATING THE FOLLOWING ORDER:\n {trade.toString()}')
+        fix.Session.sendToTarget(trade, self.sessionID)
+        ####################
 
     def order_status_request(self,cl_ord_id=None,new_id=None):
 
@@ -373,7 +396,6 @@ class Application(fix.Application):
             print(f'ORDER STATUS MESSAGE \n {ord_status_request}')
             fix.Session.sendToTarget(ord_status_request, self.sessionID)
             print(f'ORDER STATUS REQUEST FOR {cl_ord_id} SENT!')
-
 
     def test_req(self):
         print("Creating testing message... ")
@@ -428,46 +450,11 @@ class Application(fix.Application):
         print('order_cancel_replace message sent!')
 
 
-def main(config_file):
+def main():
 
 
-    interval_types_dict = {'2':'min'}
-    order_type_dict = {'MARKET':1,'LIMIT':2}
-    side_dict = {'BUY_OPEN':1,
-                 'SELL_OPEN':2,
-                 'SELL_CLOSE':2,
-    }
-
-
-    # path = 'C:/Users/ak\Downloads\quickfix_example/'
-    # order = pd.read_csv(f'{path}speedlab_orders.csv')
-    # timeframe = '1h'
-    timeframe = 1
-    # symbol = ''.join([a for a in order.iloc[1][0] if a.isalnum()])
-    # strategy = ''.join([a for a in order.iloc[1][1] if a.isalnum()])
-    # action = ''.join([a for a in order.iloc[1][5] if a.isalnum()])
-    # account = ''.join([a for a in order.iloc[1][7] if a.isalnum()])
-    # exec_time = ''.join([a for a in order.iloc[1][15] if a.isalnum()])
-    # price = None
-    # quantity = ''.join([a for a in order.iloc[1][30] if a.isalnum()])
-    # tag_55 = symbol[6:9] #Symbol
-    # tag_15 = symbol[9:12] #Currency
-    # tag_54 = str(np.where('BUY' in action,1,2)) #Side
-    # security_type = 'CASH' #tag 167
-    # symbol = 'EUR' #tag 55
-    # currency = 'AUD' #tag 15
-    # quantity = 10000 #tag 38
-    # side = 1 #tag 54
-    # order_type = 2 #tag 40
-    # account = 'U01049' #tag 1
-    # if order_type == 1:
-    #     price = None
-    # else:
-    #     price = 1.68 #limit
-
+    config_file = './client.cfg'
     try:
-        path = "./"
-        read_file = 'fix_json.txt'
 
         #start session
         settings = fix.SessionSettings(config_file)
@@ -478,165 +465,111 @@ def main(config_file):
         initiator.start()
         print(f'INITIATOR STARTED...\nSLEEPING 10 SECONDS...')
         time.sleep(10)
+        timeframe = 5
         previous_bar = datetime.datetime.now().minute
 
         run = True
-        while True:
-            if run:
-            # if (datetime.datetime.now().minute%int(timeframe) == 0) and (datetime.datetime.now().minute != previous_bar):
+        auto = False
 
-                print(f'')
-                # print(f'RUNNING TIME : {datetime.datetime.now()}')
-    #             time.sleep(5) # to fix_json be updated
-    #             previous_bar = datetime.datetime.now().minute
-    #         #     current_time = datetime.datetime.now()
-    #         #     next_bar = current_time + datetime.timedelta(seconds=timeframe*60-10)
-    #             # read data from multicharts
-    #             # get timeframe
-    #             with open(path+read_file,'r') as f:
-    #                 lines = f.readlines()
-    #                 f.close()
-    #                 last_entry = json.loads(lines[-1].rstrip().strip(r"\'"))
-    #             # data_from_mc = pd.read_csv(f'{path+read_file}',error_bad_lines=False)
-    #             timeframe = last_entry['timeframe']
-    #             interval_type = last_entry['intervaltype']
-    #
-    #             security_type = 'CASH'  # tag 167
-    #             account = 'U01049'  # tag 1
-    #             price = None
-    #             order_type = order_type_dict[last_entry['limit']['type']] # tag 40
-    #             if order_type == 2:
-    #                 price =  float(last_entry['limit']['Limit price'])
-    #             quantity = int(last_entry['volume']['quantity'])  # tag 38
-    #             symbol = last_entry['symbol'][:3] # tag 55
-    #             currency = last_entry['symbol'][4:] # tag 15
-    #             side = side_dict[last_entry['orderAction']]  # tag 54
-    #             time_id = last_entry['time'].replace(':','')
-    #
-    #             #
-    #             action = input('Push 1 for place order, 2 for order request')
-    #             if action == '1':
-    #                 order_type = str(input('Order Type='))
-    #                 if order_type != '1':
-    #                     price = np.float(input('Limit Price='))
-    #                 symbol = str(input('Symbol='))
-    #                 currency = str(input('Currency='))
-    #                 side = str(input('Side='))
-    #                 time_id = str(input('time_id='))
-    #                 quantity = int(input('quantity='))
-    #
-    #
-    #                 if True: #check if last entry is up to date
-    #                 # if pd.to_datetime(last_entry['time']) + datetime.timedelta(seconds=15) > datetime.datetime.now(): #check if last entry is up to date
-    #
-    #                 # if quantity != 0:
-    #                 #     print("PUTTING ORDER")
-    #                     application.put_order(security_type=security_type, symbol=symbol, currency=currency, quantity=quantity, side=side, order_type=order_type,
-    #                                   account=account,price=price,time_id = time_id)
-    #                     time.sleep(10)
-    #                 else:
-    #                     print('LAST BAR IN FIX JSON IS NOT CURRENT!')
-    #
-    #             if action == '2':
-    #                 order_id = input('Give order id for status update')
-    #                 application.order_status_request(cl_ord_id=order_id)
-    #             # run = False
-    #             # else:
-    #             #     print(f'QUANTITY = 0 - WAIT TILL NEXT BAR')
-    #             #     time.sleep(100)
-    #             #     continue
-    #         # else:
-    #         #     continue
-    #             # order = pd.read_csv(f'{path}speedlab_orders.csv')
-    #             # symbol_ = ''.join([a for a in order.iloc[1][0] if a.isalnum()]).strip('symbol')
-    #             # strategy_ = ''.join([a for a in order.iloc[1][1] if a.isalnum()])
-    #             # action_ = ''.join([a for a in order.iloc[1][5] if a.isalnum()]).strip('orderAction')
-    #             # account_ = ''.join([a for a in order.iloc[1][7] if a.isalnum()]).strip('accountSegmentatityType')
-    #             # exec_time = ''.join([a for a in order.iloc[1][15] if a.isalnum()])
-    #             # price = None
-    #             # quantity_ = ''.join([a for a in order.iloc[1][30] if a.isalnum()]).strip('volumequantity')
-    #             #
-    #             # security_type = 'CASH'
-    #             # symbol = symbol_[:3]
-    #             # currency = symbol_[3:6]
-    #             # side = np.where('BUY' in action_,1,np.where('SELL' in action_,2,0))
-    #             # order_type = 1 #1:MARKET, 2:LIMIT
-    #             # quantity = quantity_
-    #             # if order_type == 1:
-    #             #     price = None
-    #             # else:
-    #             #     price = 1.89  # limit
-    #             # account = 'U01049'
-    #
-    #
-    #             # input_ = input('enter 1 for order, 2 for exit, 3 for order status update, 4 for order cancel request test for test request :\n ')
-    #             # print('\n')
-    #             # if input_ == '1':
-    #             #     print ("Putin Order")
-    #             #     application.put_order(security_type=security_type, symbol=symbol, currency=currency, quantity=quantity, side=side, order_type=order_type,
-    #             #                   account=account,price=price)
-    #             #     # initiator.stop()
-    #             # if input_ == '2':
-    #             #     sys.exit(0)
-    #             # if input_ == 'test':
-    #             #     application.test_req()
-    #             # if input_ == '3':
-    #             #     print('requesting order status...')
-    #             #     application.order_status_request()
-    #             # if input_ == '4':
-    #             #     print('order cancel request...')
-    #             #     application.order_cancel_request(account=account,symbol=symbol,side=side,quantity=quantity)
-    #             # if input_ == '5':
-    #             #     print('order cancel replace...')
-    #             #     application.order_cancel_replace(account=account,symbol=symbol,side=side,quantity=quantity,
-    #             #                                      order_type=2,price=1.1)
-    #             #
-    #             # if input_ == 'd':
-    #             #     import pdb
-    #             #     pdb.set_trace()
-    #             # else:
-    #             #     print ("Valid input is 1 for order, 2 for exit")
-    #             #     continue
-    # # except (fix.ConfigError, fix.RuntimeError), e:
+        if not auto:
+            while True:
+                if run:
+                    application.timeframe = timeframe
+
+                    # print(f'')
+                    print(f'RUNNING TIME : {datetime.datetime.now()}')
+                    previous_bar = datetime.datetime.now().minute
+
+                    input_ = input('enter 1 for order, 2 for exit, 3 for order status update, 4 for order cancel request test for test request :\n ')
+                    print('\n')
+
+                    if input_ == '1':
+                        print ("Putin Order")
+                        limit_price = np.float(input('Limit Price From Strategy =')) #from strategy output, last_close +- limit
+                        application.limit_price = limit_price
+                        order_type = str(input('Order Type = ')) #from strategy output
+                        if order_type != '1':
+                            price = np.float(input('Limit Price='))
+                        else:
+                            price=None
+                        symbol = str(input('Symbol='))
+                        currency = str(input('Currency='))
+                        side = str(input('Side='))
+                        # time_id = str(input('time_id='))
+                        quantity = int(input('quantity='))
+                        application.quote_request(symbol=symbol, currency=currency, quantity=quantity, side=side, order_type=order_type,
+                                      price=price)
+        #             #     # initiator.stop()
+                    if input_ == '2':
+                        sys.exit(0)
+        else:
+            while True:
+                symbol = str(input('Symbol = ' ))
+                currency = str(input('Currency = '))
+                lot = int(input('Lot = '))
+                limit_pips = int(input('Limit Pips = '))
+
+
+                gc.collect()
+                time.sleep(10)
+                now = datetime.datetime.now()
+                print(now)
+                hdf_path = f'd:/Data/minute_data{symbol}.h5'
+                # hdf_path = 'minute_data' + symbol + currency + '.h5'
+                lock = filelock.FileLock(hdf_path + ".lock")
+
+                executed_period = None
+                last_period = None
+                decimals = np.where("JPY" in currency, 100, 10000)
+
+                position = 0
+
+                with lock.acquire(poll_intervall=0.005):
+                    store = pd.HDFStore(hdf_path,
+                                        mode='r')
+                    df = store[symbol]
+                    # df = store[symbol + currency]
+
+                    store.close()
+
+                ask = df.copy()
+                ask.index = ask.index + pd.Timedelta(hours=7)
+                del df
+
+                print('Last Period : ' + str(last_period) + " while mext period : " + str(
+                    (ask.index[-1] + pd.to_timedelta('1min')).ceil(
+                        str(timeframe) + 'T')) + " - ASK INDEX" + str(
+                    ask.index[-1]) + '- ASK INDDEX PREVIOUS : ' + str(ask.index[-2]))
+
+                new_period = (ask.index[-1] + pd.to_timedelta('1min')).ceil(str(timeframe) + 'T')
+                if (last_period != new_period) & (new_period != executed_period):
+                    executed_period = new_period
+
+                    ask = ask.resample(str(timeframe) + 'T', label='right', closed='right', base=0).agg(
+                        {'open': 'first', 'low': 'min', 'high': 'max', 'close': 'last'})
+
+                    ask = ask.dropna()
+                    print('Strategy run')
+                    print("Close Price : " + str(ask.iloc[-1].close))
+                    ask_price = ask.iloc[-1].close
+
+                    if np.logical_or(position == 0, position < 0):
+                        limit_price = ask_price - limit_pips/decimals
+                        position = 1
+                    elif position > 0:
+                        limit_price = ask_price + limit_pips/decimals
+                        position = -1
+                    application.limit_price = limit_price
+                    application.quote_request(symbol=symbol, currency=currency, quantity=lot, side=position,
+                                              order_type=1,
+                                              price=None)
+
+
+
+
     except (fix.ConfigError or fix.RuntimeError) as error:
         print(f'ERROR\n{error}')
 
 if __name__=='__main__':
 
-    config_path = './client.cfg'
-
-    # def get_config_params(path=config_path):
-    #     # parser = argparse.ArgumentParser(description='FIX Client')
-    #     # parser.add_argument('file_name', type=str, help='Name of configuration file')
-    #     # args = parser.parse_args()
-
-    # import configparser
-    # config = configparser.ConfigParser()
-    # config['DEFAULT'] = {'ConnectionType':'initiator',
-    #                      'LogonTimeout' :'30',
-    #                     'ReconnectInterval' : '30'
-    #                      }
-    # config['SESSION'] = {}
-    # config['SESSION']['BeginString'] = 'FIX.4.2'
-    # config['SESSION']['SenderCompID'] = 'qafix49'
-    # config['SESSION']['TargetCompID'] = 'IB'
-    # config['SESSION']['StartTime'] = '00:00:00'
-    # config['SESSION']['EndTime'] = '00:00:00'
-    # config['SESSION']['HeartBtInt'] = '30'
-    # config['SESSION']['SocketConnectPort'] = '7496'
-    # config['SESSION']['HeartBtInt'] = '30'
-    # config['SESSION']['SocketConnectHost'] = '127.0.0.1'
-    # config['SESSION']['DataDictionary'] = 'C:/Users/ak\Downloads\quickfix - 1.15.1_python_un\quickfix - 1.15.1\spec/FIX42.xml'
-    # with open('config_file.ini','w') as config_file:
-    #     config.write(config_file)
-    # main(config)
-    # import savReaderWriter as s
-    #
-    # df = pd.DataFrame(list(s.SavReader('./Data_example.sav', returnHeader=True, rawMode=False)))
-    # df.columns = [str(col).strip("b''") for col in df.iloc[0, :]]
-    # df.drop([0], axis=0, inplace=True)
-    # df.set_index(df.iloc[:, 0], inplace=True)
-    # df.drop([df.columns[0]], axis=1, inplace=True)
-    # df_ = df.astype(np.float32, copy=True)
-
-    main(config_path)
+    main()

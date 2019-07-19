@@ -1,0 +1,47 @@
+#connect to Bloomberg using sTunnel
+#download 
+#replace stunnel.conf
+#start Service
+#run script
+#meta apo ligo tha vgalei logon
+#vazeis 1 gia order input
+e.g.
+LimitPrice=vale oti thes(p.x.1.12)
+OrderType=1(market)
+Symbol=EURUSD
+currency=EUR(einai to nomisma pou einai to account)
+Side=1(buy,2-->sell, mono auta pairnei)
+quantity=10
+#i logiki einai i eksis gia to forex:
+-stelneis ena Request(msgtype(35)=R) gia to Symbol pou thes
+-sumfwna me to manual, an den zitiseis side sou stelnoyn kai bid kai ask
+-emeis zitame side=1 kai pali pairnoume kai ta dyo 
+-sou apantane me minimata Quotes(msgtype(35)=S) apo ton kathe dealer pou einai sto party
+-sto diko mas setup einai 2,
+-oi alloi 2 einai to ID toy adrian kai to Bloomberg
+-ousiastika esu zitas apo tous dealers (trapezes) quotes (times pou sou dinoun gia bid kai ask) 
+mesw tou bloomberg
+-molis pareis ta quotes, epeidi akoma den uparxei entoli limit, tsekareis an i timi pou thes 
+(close +- limit) ikanopoieitai apo auta poy soy stelnoun
+-i apantisi sta Quotes poy stelnoun (35=S) einai ena minima QuoteResponse(35=AJ) poy ousiastika to 
+simantiko einai to tag 694(QuoteResponseType) pou einai =1 an pareis tin timi i =6 gia pass
+-dokimasa na steilw kai ta dyo kai den pairnw kapoia apantisi
+-an steileis 694=1 prepei na pareis ena execution report (35=8) poy sou leei ti egine i entoli
+(filled,cancelled ktl)
+*Kati pou den pairnoume(opote eimaste edw gia aytin tin epilogi)
+-an steileis 694=6, prepei na pareis ena MsgType=AI, pou ousiastika sou leei oti ekanes pass ta 
+quotes apo to sigkekrimeno dealer
+*kanonika leei autos apo to bloomberg molis steileis 694=6 prepei na stamatisoun na erxontai quotes
+apo to sugkekrimeno dealer. Auto omws den ginetai kai sunexizoun na erxontai (opote eimaste edw)
+#i logiki loipon pou theloume gia to limit einai i eksis:
+-tha pairnoume tin teleutaia timi close apo data handler
+-tha stelnoume request kai sta quotes pou erxontai tha elegxoume an i timi pou theloume 
+(pou einai to close +- to limit pou tha exoume kathe fora) mas tin dinei kapoia trapeza
+-an mas ti dinei tha stelnoume 694=1 kai perimenoume na doume ti egine
+-an den mas ti dinoun, tha stelnoume pass (694=6) kai tha zitame ksana quotes mipws paroume kati
+kalutero (auto eipame na to kanoume gia deka seconds)
+#to kathe ena minima to exw ftiaksei san ksexwristi synartisi sto script
+#auta stelnontai mesw tis function toApp(einai tou engine)
+#oti erxetai, erxetai sto fromApp
+#ekei kanw decompose to kathe minima, pairnw ta epimerous tags (pedia) kai vlepw ti afora
+-auta ws twra
