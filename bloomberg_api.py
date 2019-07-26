@@ -16,7 +16,8 @@ import gc
 
 FLOAT_FORMAT = '%.5f'
 DATE_FORMAT = '%Y%m%d%H%M'
-
+prices = []
+dealers_no = 2
 class Application(fix.Application):
 
     orderID = 100
@@ -130,7 +131,7 @@ class Application(fix.Application):
         print(f'<-APP: {message.toString()}')
 
         msg_type = message.getHeader().getField(35)
-
+        global prices
         if msg_type == 'S': #QUOTES
             dealer_no = 0
             hit = False
@@ -150,62 +151,79 @@ class Application(fix.Application):
                 if group_453.getField(452) == '1':  # dealer
                     dealer_no += 1
                     dealer_id = group_453.getField(448)
-                    bid_px = float(message.getField(132))
-                    offer_px = float(message.getField(133))
+                    print(f'Dealer ID : {dealer_id} and Party ID {party_id}')
+                    try:
+                        bid_px = float(message.getField(132))
+                    except:
+                        bid_px = 999
+                    try:
+                        offer_px = float(message.getField(133))
+                    except:
+                        offer_px = 999
 
-                    if hit:
-                        self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
-                                            symbol=symbol, product=product, side=side, dealer_id=dealer_id)
-                        print(f'PRICE FILLED FROM PREVIOUS DEALER - PASS QUOTES FROM {dealer_id}')
-                        continue
+                    # if hit:
+                    #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                    #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id)
+                    #     print(f'PRICE FILLED FROM PREVIOUS DEALER - PASS QUOTES FROM {dealer_id}')
+                    #     continue
                     print(f'CHECKING QUOTES FROM DEALER: {dealer_id}')
                     print(f'BID PX:{bid_px} - OFFER PX:{offer_px}')
+                    prices.append(offer_px)
 
-                    if side == '1': #long
-                        if offer_px <= self.limit_price:
-                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=1,
-                                                symbol=symbol, product=product,side=side,dealer_id=dealer_id,price=self.limit_price)
-                            print(f'BUY at {offer_px} from {dealer_id} - PASS QUOTES FROM OTHER DEALERS')
-                            hit = True
-                            continue
-                        else:
-                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
-                                                symbol=symbol, product=product, side=side, dealer_id=dealer_id)
-                            print(f'PASSED QUOTES FROM {dealer_id} ')
-                            time.sleep(1)
-                            continue
-                            # if party_id == parties_no:
-                            #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
-                            #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id) #check other dealers
-                            #     print(f'CURRENT QuoteRequestPassed - REQUEST NEW QUOTES')
-                            #     self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1)
-                            #
-                            # else: #pass current request - send new
-                            #     continue
-                            #     # self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1,)
+                if len(prices)==dealers_no:
+                    print(prices)
+
+                    offer_px = prices[0]
+                    prices=[]
+                    if side == '1':  # long
+                       if offer_px <= self.limit_price:
+                           self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=1,
+                                               symbol=symbol, product=product, side=side, dealer_id=dealer_id,
+                                               price=offer_px,currency=currency,quantity=quantity)
+                           print(f'BUY at {offer_px} from {dealer_id} - PASS QUOTES FROM OTHER DEALERS')
+                           hit = True
+                           # time.sleep(10)
+                           continue
+                       else:
+                           self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                                               symbol=symbol, product=product, side=side, dealer_id=dealer_id)
+                           print(f'PASSED QUOTES FROM {dealer_id} ')
+                           time.sleep(1)
+                           continue
+                           # if party_id == parties_no:
+                           #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                           #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id) #check other dealers
+                           #     print(f'CURRENT QuoteRequestPassed - REQUEST NEW QUOTES')
+                           #     self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1)
+                           #
+                           # else: #pass current request - send new
+                           #     continue
+                           #     # self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1,)
 
                     if side == '2':  # long
-                        if bid_px >= self.limit_price:
-                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=1,
-                                                symbol=symbol, product=product, side=side, dealer_id=dealer_id,price=self.limit_price)
-                            print(f'SELL at {bid_px} from {dealer_id} - PASS QUOTES FROM OTHER DEALERS')
-                            hit = True
-                            continue
-                        else:
-                            self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
-                                                symbol=symbol, product=product, side=side, dealer_id=dealer_id)
-                            print(f'PASSED QUOTES FROM {dealer_id} ')
-                            time.sleep(10)
-                            continue
-                            # if party_id == parties_no:
-                            #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
-                            #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id) #check other dealers
-                            #     print(f'CURRENT QuoteRequestPassed - REQUEST NEW QUOTES')
-                            #     self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1)
-                            #
-                            # else: #pass current request - send new
-                            #     continue
-                            #     # self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1,)
+                       if bid_px >= self.limit_price:
+                           self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=1,
+                                               symbol=symbol, product=product, side=side, dealer_id=dealer_id,
+                                               price=self.limit_price,currency=currency,quantity=quantity)
+                           print(f'SELL at {bid_px} from {dealer_id} - PASS QUOTES FROM OTHER DEALERS')
+                           hit = True
+                           continue
+                       else:
+                           self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                                               symbol=symbol, product=product, side=side, dealer_id=dealer_id)
+                           print(f'PASSED QUOTES FROM {dealer_id} ')
+                           # time.sleep(10)
+                           continue
+
+                        # if party_id == parties_no:
+                        #     self.quote_response(quote_req_id=quote_req_id, quote_id=quote_id, quote_resp_type=6,
+                        #                         symbol=symbol, product=product, side=side, dealer_id=dealer_id) #check other dealers
+                        #     print(f'CURRENT QuoteRequestPassed - REQUEST NEW QUOTES')
+                        #     self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1)
+                        #
+                        # else: #pass current request - send new
+                        #     continue
+                        #     # self.quote_request(symbol=symbol,currency=currency,quantity=quantity,side=side,order_type=1,)
 
                     # if (not hit) and party_id == parties_no: # checked all and did not get the price - send again request
                     #     self.quote_request(symbol=symbol, currency=currency, quantity=quantity, side=side, order_type=1)
@@ -220,6 +238,7 @@ class Application(fix.Application):
 
                 else:
                     continue
+        # print(f'PRICE : {prices}')
         if msg_type == 'AI':
             print(f'RECEIVED AI message')
         if msg_type == '8':
@@ -230,7 +249,7 @@ class Application(fix.Application):
 
         return
 
-    def quote_response(self,quote_req_id,quote_id,quote_resp_type,symbol,product,side,dealer_id,price=None):
+    def quote_response(self,quote_req_id,quote_id,quote_resp_type,symbol,product,side,dealer_id,price=None,currency = None,quantity = None):
 
         #HEADER
         quote_resp = fix50sp2.QuoteRequest()
@@ -251,14 +270,23 @@ class Application(fix.Application):
         quote_resp.setField(fix.Symbol(symbol))#55
         quote_resp.setField(fix.Product(int(product)))#460
         quote_resp.setField(fix.Side(side))#54
-        quote_resp.setField(fix.TransactTime(1))#60
+
+        quote_resp.setField(fix.StringField(167,'FXSPOT'))
+        print(datetime.datetime.utcnow().strftime('%Y%m%d-%H:%M:%S'))
+        quote_resp.setField(fix.StringField(60,datetime.datetime.utcnow().strftime('%Y%m%d-%H:%M:%S')))#60
+        # quote_resp.setField(fix.TransactTime(1))#60
         quote_resp.setField(fix.SettlType('0'))#63
         settl_date = datetime.datetime.utcnow()+BDay(n=2)
         quote_resp.setField(fix.SettlDate(settl_date.strftime('%Y%m%d')))#64
 
         if quote_resp_type == 1:
-            quote_resp.setField(fix.Price(float(price)))
+            # quote_resp.setField(fix.Price(float(price)))
+            quote_resp.setField(fix.OfferPx(float(price)))
+            quote_resp.setField(fix.OfferSpotRate(float(price)))
+            quote_resp.setField(fix.StringField(15, str(currency)))  # Currency
+            # quote_resp.setField(fix.BidPx(float(price)))
             quote_resp.setField(fix.QuoteID(quote_id))  # 117
+            quote_resp.setField(fix.OrderQty(quantity)) #38
             quote_resp.setField(fix.ClOrdID(quote_resp.getField(693)+self.genOrderID()))  # 11
 
         group_453 = fix50sp2.QuoteRequest().NoRelatedSym().NoPartyIDs()
@@ -455,7 +483,7 @@ def main():
 
     config_file = './client.cfg'
     try:
-
+        sleep_seconds = 3
         #start session
         settings = fix.SessionSettings(config_file)
         application = Application()
@@ -463,8 +491,8 @@ def main():
         logFactory = fix.FileLogFactory(settings)
         initiator = fix.SocketInitiator(application, storeFactory, settings, logFactory)
         initiator.start()
-        print(f'INITIATOR STARTED...\nSLEEPING 10 SECONDS...')
-        time.sleep(10)
+        print(f'INITIATOR STARTED...\nSLEEPING {sleep_seconds} SECONDS...')
+        time.sleep(sleep_seconds)
         timeframe = 5
         previous_bar = datetime.datetime.now().minute
 
@@ -500,6 +528,7 @@ def main():
                         application.quote_request(symbol=symbol, currency=currency, quantity=quantity, side=side, order_type=order_type,
                                       price=price)
         #             #     # initiator.stop()
+        #             time.sleep(10)
                     if input_ == '2':
                         sys.exit(0)
         else:
