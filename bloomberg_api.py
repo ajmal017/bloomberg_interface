@@ -51,6 +51,7 @@ class Application(fix.Application):
 
     def onCreate(self, sessionID):
             print(f'New Session created!\n ID: {sessionID.toString()}')
+            self.sessionID = sessionID
             return
 
     def onLogon(self, sessionID):
