@@ -2,7 +2,7 @@ from time import sleep
 import numpy as np
 import pandas as pd
 import numba
-
+import pickle
 import itertools as it
 import datetime
 from mc_functions import functions
@@ -18,409 +18,614 @@ if len(sys.argv) > 1:
 if len(sys.argv) > 2:
     port1 =  sys.argv[2]
     int(port1)
-symbol = 'EUR'
-currency = 'USD'
-print(symbol+currency)
-live_trading = 0
-lot = 10000
-bar_size = 5
-hour_min = 'T'
-stop_loss = 10000
-take_profit = 10000
-limit_pips = 0
-
-functions_to_test = {'limit_reverse':functions.limit_reverse
-
-                     }
-
-# experiments = [{'limit_reverse': {}}]
+SYMBOL = 'CHFJPY'
+CURRENCY = 'CHF'
+print(SYMBOL)
+LIVE_TRADING = 1
+TEST_TRADING = 0
+LOT = 10000
+BAR_SIZE = 5
+HOUR_MIN = 'T'
+LOSS_PIPS = 10000
+PROFIT_PIPS = 10000
+LIMIT_PIPS = 3
+CUSTOM_TIMEDELTA = 7
+POSITIONS_PICKLE_PATH = r'C:\Users\ak\repos\bloomberg_interface/positions.pickle'
 
 #We set a instrument ID in order to create contract and get the appropriate results in Historical and Real Bars Prices
 #The txt file is InstrumentsTickersPairs
-market_params = [{'lot': 10000, 'profit_pips': take_profit, 'loss_pips': stop_loss}]
+market_params = [{'LOT': LOT, 'profit_pips': PROFIT_PIPS, 'loss_pips': LOSS_PIPS}]
 
+print(f'SYMBOL:{SYMBOL}')
+print(f'CURRENCY:{CURRENCY}')
+print(f'LIMIT PIPS:{LIMIT_PIPS}')
+print(market_params)
 
-def get_datetime_index(now,bar_time,hour_or_min):
-    if "min" in hour_or_min:
-        if now.day-2 <0:
-            start = datetime.datetime(now.year, now.month-1, now.day  + 28, now.hour, now.minute)
-        else:
-            start = datetime.datetime(now.year,now.month,now.day-2,now.hour,now.minute)
-        end = datetime.datetime(now.year,now.month,now.day,now.hour,now.minute)
+def limit_strategy(position):
+    exit_signal = False
+
+    if position != 1:
+        buy_signal = True
+        sell_signal = False
     else:
-        if now.day -20<0:
-            start = datetime.datetime(now.year, now.month - 1, now.day +10, now.hour)
-        else:
-            start = datetime.datetime(now.year, now.month, now.day-20, now.hour)
-        end = datetime.datetime(now.year, now.month, now.day, now.hour)
-    return start,end
+        buy_signal = False
+        sell_signal = True
 
-def calculate_sleep_time(hour_min, bar_size):
-    if hour_min == 'h':
-        now = datetime.datetime.now()
-        hours_to_wait = bar_size -  np.mod(now.hour,bar_size) - 1
-        minutes_to_wait = 60 - now.minute
-        seconds_to_wait = 60- now.second
-        seconds_to_wait = seconds_to_wait + (minutes_to_wait*60) + (hours_to_wait*3600) + 5
-        # if bar_size == 24:
-        #     seconds_to_wait = seconds_to_wait + 15*60
-    else:
-        now = datetime.datetime.now()
-
-        minutes_to_wait = bar_size - np.mod(now.minute,bar_size)-1
-        seconds_to_wait = 60 - now.second
-        seconds_to_wait = seconds_to_wait + (60*minutes_to_wait) + 5
-        # if bar_size == 5:
-        #     seconds_to_wait = seconds_to_wait + 2*60
-    print(seconds_to_wait)
-    return seconds_to_wait
-
-def return_experiment_combinations(dictionary):
-    dict_list = []
-    for key in dictionary:
-        dict_list.append(dictionary[key])
-    variants = {}
-
-    for item in dict_list:
-        variants = variants.copy()
-        variants.update(item)
-    varNames = sorted(variants)
-    combinations = [dict(zip(varNames, prod)) for prod in it.product(*(variants[varName] for varName in varNames))]
-    return combinations
-
-def create_signal(df,dictionary,market,decimals):
-    parameter_set = return_experiment_combinations(dictionary)
-    buy_condition = True
-    sell_condition = True
-    exit_condition = True
-
-    for key in dictionary:
-        buy, sell,exit_pos = functions_to_test[key](df, **parameter_set[0])
-        buy_condition = np.logical_and(buy_condition, buy)
-        sell_condition = np.logical_and(sell_condition, sell)
-        exit_condition = np.logical_and(exit_condition,exit_pos)
-        signals = np.zeros(len(df))
-        exit_signals = np.zeros(len(df))
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-        exit_signals[exit_condition] = 1
-        pip_value = 0.0001
-        if "JPY" in currency:
-            pip_value = 0.01
-        lot = np.ones(shape=len(df)) * 10000
-        filter_cumsum = pd.read_csv('C:/clusters/cumscum.csv')
-        filter_cumsum.set_index(pd.to_datetime(filter_cumsum['time']))
-        y = np.zeros(shape=len(df))
-        y[-len(filter_cumsum):] = filter_cumsum['cumsum'].values
-
-        df['cumsum'] = y
+    return buy_signal, sell_signal, exit_signal
 
 
-        df['bars'], df['trades'], df['market_trades'], df['trades_sum'], df['take_profit'], df['stop_loss'], df['equity'], df['exit_signals'] = fast_characterize_bars(
-            signals, 1, df.open.values, df.high.values, df.low.values, df.close.values, 10000, 10000, pip_value,
-            lot, 0, 5, exit_signals)
-
-
-        df.to_csv('C:/clusters/cluster_' + symbol + '.' + currency + '_nofilter.csv')
-        signals, exit_signals = apply_equity_filter(signals, exit_signals, df['cumsum'],
-                                                    df['cumsum'].ewm(span=100).mean().bfill())
-        df['bars'], df['trades'], df['market_trades'], df['trades_sum'], df['take_profit'], df['stop_loss'], df[
-            'equity'], df['exit_signals'] = fast_characterize_bars(
-            signals, 1, df.open.values, df.high.values, df.low.values, df.close.values, take_profit, 10000, 10000,
-            lot, 0, 5, exit_signals)
-
-        df.to_csv('C:/clusters/cluster_' + symbol + '.' + currency + '.csv')
-        np.savetxt('C:/clusters/live_' + symbol + '.' + currency + '.txt', df.bars.values, newline='\r\n', delimiter='\t',
-                   fmt='%d')
-        if df.bars.iloc[-1] == 0:
-            return False,False,True
-        elif df.bars.iloc[-1]>0:
-            return True,False,False
-        elif df.bars.iloc[-1]<0:
-            return False, True, False
-
-
-
-@numba.jit(nopython=True, nogil=True)
-def fast_characterize_bars(signals, bars_to_ignore, open, high, low, close, profit_pips, loss_pips, pip_value, lot,
-                           is_combined,commision_amount,exit_signal):
-    exit_signal = exit_signal.copy()
-    sign = 0
-    first_occurence = 0
-    bars = np.zeros(signals.shape[0])
-    trades_sum = np.zeros(signals.shape[0])
-    trades = np.zeros(signals.shape[0])
-    take_profit = np.zeros(signals.shape[0])
-    stop_loss = np.zeros(signals.shape[0])
-    market_trades = np.zeros(signals.shape[0])
-    profit_value = 0
-    loss_value = 0
-    exit_signal[:bars_to_ignore] = 0
-    for i in range(bars_to_ignore, len(signals), 1):
-
-        if exit_signal[i] ==1:
-            if sign ==1:
-                sign = 0
-                first_occurence = 0
-                exit_signal[i] = -1
-            elif sign ==-1:
-                sign =0
-                first_occurence = 0
-                exit_signal[i] = 1
-            elif sign == 0:
-                exit_signal[i] = 0
-
-        elif sign == 1 and high[i] > take_profit[i - 1]:
-            market_trades[i] = -1
-            sign = 0
-            first_occurence = 0
-        elif sign == 1 and low[i] < stop_loss[i - 1]:
-            market_trades[i] = -1
-            sign = 0
-            first_occurence = 0
-        elif sign == -1 and low[i] < take_profit[i - 1]:
-            market_trades[i] = 1
-            sign = 0
-            first_occurence = 0
-        elif sign == -1 and high[i] > stop_loss[i - 1]:
-            market_trades[i] = 1
-            sign = 0
-            first_occurence = 0
-        if signals[i - 1] > 0 and market_trades[i] == 0 and exit_signal[i] == 0:
-            bars[i] = 1
-            sign = 1
-            if first_occurence > 0:
-                trades[i] = 0
-                take_profit[i] = profit_value
-                stop_loss[i] = loss_value
-            else:
-                trades[i] = 1
-
-                profit_value = open[i] + (profit_pips * pip_value)
-                loss_value = open[i] - (loss_pips * pip_value)
-                take_profit[i] = profit_value
-                stop_loss[i] = loss_value
-            first_occurence = 1
-        elif signals[i - 1] < 0 and market_trades[i] == 0 and exit_signal[i] == 0:
-            bars[i] = -1
-            sign = -1
-            if first_occurence < 0:
-                trades[i] = 0
-                take_profit[i] = profit_value
-                stop_loss[i] = loss_value
-            else:
-                trades[i] = -1
-                profit_value = open[i] - (profit_pips * pip_value)
-                loss_value = open[i] + (loss_pips * pip_value)
-                take_profit[i] = profit_value
-                stop_loss[i] = loss_value
-            first_occurence = -1
-        else:
-            bars[i] = sign
-            trades[i] = 0
-            take_profit[i] = profit_value
-            stop_loss[i] = loss_value
-    bars = bars * lot
-    trade_sign = 0
-    trade_open_price = 0
-    trade_close_price = 0
-
-    for i in range(bars_to_ignore, len(signals), 1):
-        if trades[i] == 1:
-            if trade_sign == -1:
-                trades_sum[i] = trade_sign * (open[i] - trade_open_price) * (1/pip_value)
-                trade_open_price = open[i]
-                trade_sign = 1
-            else:
-                trade_sign = 1
-                trade_open_price = open[i]
-        elif trades[i] == -1:
-            if trade_sign == 1:
-                trades_sum[i] = trade_sign * (open[i] - trade_open_price) * (1/pip_value)
-                trade_open_price = open[i]
-                trade_sign = -1
-            else:
-                trade_sign = -1
-                trade_open_price = open[i]
-        elif exit_signal[i] != 0:
-            if trade_sign == -1:
-                trades_sum[i] = trade_sign*(open[i+1] - trade_open_price)*(1/pip_value)
-                trade_sign = 0
-                trade_open_price = 0
-            elif trade_sign == 1:
-                trades_sum[i] = trade_sign * (open[i + 1] - trade_open_price) * (1/pip_value)
-                trade_sign = 0
-                trade_open_price = 0
-
-        elif market_trades[i] == 1:
-            if trade_sign == -1:
-                if take_profit[i] > low[i]:
-                    if is_combined:
-                        trades_sum[i] = trade_sign * (open[i + 1] - trade_open_price) * (1/pip_value)
-                    else:
-                        trades_sum[i] = trade_sign * (take_profit[i] - trade_open_price) * (1/pip_value)
-                elif stop_loss[i] < high[i]:
-                    if is_combined:
-                        trades_sum[i] = trade_sign * (open[i + 1] - trade_open_price) * (1/pip_value)
-                    else:
-                        trades_sum[i] = trade_sign * (stop_loss[i] - trade_open_price) * (1/pip_value)
-                else:
-                    1
-
-                trade_sign = 0
-                trade_open_price = 0
-        elif market_trades[i] == -1:
-            if trade_sign == 1:
-                if take_profit[i] < high[i]:
-                    if is_combined:
-                        trades_sum[i] = trade_sign * (open[i + 1] - trade_open_price) * (1/pip_value)
-                    else:
-                        trades_sum[i] = trade_sign * (take_profit[i] - trade_open_price) * (1/pip_value)
-
-                elif stop_loss[i] > low[i]:
-                    if is_combined:
-                        trades_sum[i] = trade_sign * (open[i + 1] - trade_open_price) * (1/pip_value)
-                    else:
-                        trades_sum[i] = trade_sign * (stop_loss[i] - trade_open_price) * (1/pip_value)
-                else:
-                    1
-                trade_sign = 0
-                trade_open_price = 0
-
-    trades_sum[-1] = trade_sign * (open[-1] - trade_open_price) * (1/pip_value)
-    trades[-1] = trade_sign
-    difference = np.zeros(shape=len(close))
-    equity = np.zeros(shape=len(close))
-    difference[:-1] = np.diff(open)
-
-    equity = ((difference * bars/(lot*pip_value)) - (np.abs(trades) * commision_amount))
-    trades_sum = trades_sum - (commision_amount)
-    for i in range(0, len(market_trades), 1):
-        if exit_signal[i] != 0:
-            if signals[i-1] !=0:
-                equity[i] = ((open[i + 1] - open[i]) * ((1 / pip_value)) * bars[i - 1] / abs(
-                    bars[i - 1])) - (commision_amount)
-            else:
-                equity[i] = (open[i+1] - open[i])*((1/pip_value))*bars[i-1]/abs(bars[i-1]) - commision_amount
-                trades_sum[i] = trades_sum[i] - commision_amount
-        elif market_trades[i] < 0:
-            if high[i] > take_profit[i]:
-                equity[i] = (take_profit[i] - open[i])*(1/pip_value) - commision_amount
-                trades_sum[i] = trades_sum[i] - commision_amount
-            elif low[i] < stop_loss[i]:
-                equity[i] = (stop_loss[i] - open[i])*(1/pip_value) - commision_amount
-                trades_sum[i] = trades_sum[i] - commision_amount
-        elif market_trades[i] > 0:
-            if high[i]>stop_loss[i]:
-                equity[i] = (open[i]- stop_loss[i])*(1/pip_value) - commision_amount
-                trades_sum[i] = trades_sum[i] - commision_amount
-            elif low[i] < take_profit[i]:
-                equity[i] = ( open[i]- take_profit[i])*(1/pip_value) - commision_amount
-                trades_sum[i] = trades_sum[i] - commision_amount
-
-    return bars, trades, market_trades, trades_sum,take_profit,stop_loss,equity,exit_signal
 def main():
     global duration_string, bar_size_setting, what_to_show, initialRequest
     import time
     import json
-    file = "C:/Data/"
+    file = "D:/Data/"
     import os
     import gc
     os.chdir(os.path.dirname(file))
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
-    socket.connect('tcp://10.10.1.12:%s' % port)
+    socket.connect('tcp://10.10.1.34:%s' % port)
     if len(sys.argv) > 2:
-        socket.connect('tcp://10.10.1.12:%s' % port1)
+        socket.connect('tcp://10.10.1.34:%s' % port1)
 
-    total_conts = 0
-    current_conts = 0
+    def stop_quotes_message(symbol):
+        dict = {'action': 'cancel_quotes', 'symbol': symbol, 'lot': 0, 'currency': None,
+                'price': 0, 'stop_loss': 0, 'take_profit': 0}
+        print(f'SEND CANCEL QUOTES MESSAGE')
+        socket.send_json(json.dumps(dict))
+        # Get the reply.
+        message = socket.recv()
+        message = message.decode("utf-8")
+        print("Received reply " + "[", message + "]")
+
+    def get_action_limit_sl_tp(buy_signal, sell_signal, market_parameters, decimals):
+
+        # get action and limit price
+        if buy_signal:
+            action = 'buy'
+            limit_price = ask_price - LIMIT_PIPS / float(decimals)
+        if sell_signal:
+            action = 'sell'
+            limit_price = ask_price + LIMIT_PIPS / float(decimals)
+        # if time_run_criterion and last_position != 0:
+        #     action = 'update_limit'
+
+        # create stop loss and take profit
+        market_parameters = market_params[0]
+        if action == 'buy':
+            stop_loss = ask_price - market_parameters['loss_pips'] / float(decimals)
+            take_profit = ask_price + market_parameters['profit_pips'] / float(decimals)
+        elif action == 'sell':
+            stop_loss = ask_price + market_parameters['loss_pips'] / float(decimals)
+            take_profit = ask_price - market_parameters['profit_pips'] / float(decimals)
+        else:
+            stop_loss = 0
+            take_profit = 0
+        return action, limit_price, stop_loss, take_profit
+
+    buy_signal = False
+    sell_signal = False
+    exit_signal = True
     executed_period = None
     last_period = None
+
     while True:
         gc.collect()
-        # sleep(calculate_sleep_time(hour_min,bar_size))
+        intrabar_run_criterion = False
+        time_run_criterion = False
         sleep(10)
         now = datetime.datetime.now()
         print(now)
-        hdf_path = 'minute_data' + symbol + currency+ '.h5'
-        lock = filelock.FileLock(hdf_path+".lock")
+        if TEST_TRADING == 1:
+            test_scenario_dict = {1:test_scenario_1, 2:test_scenario_2, 3:test_scenario_3, 4:test_scenario_4, 5:test_scenario_5,
+                                  6:test_scenario_6, 7:test_scenario_7, 8:test_scenario_8, 9:test_scenario_9,
+                                10:test_scenario_10, 11:test_scenario_11, 12:test_scenario_12,
+                                13:test_scenario_13, 14:test_scenario_14,
+                                15:test_scenario_15, 16:test_scenario_16, 17:test_scenario_17
+                                 }
 
-        with lock.acquire(poll_intervall=0.005):
-            store = pd.HDFStore(hdf_path,
-                                mode='r')
-            df = store[symbol+currency]
+            test_scenario = int(input(f'Choose test scenario: '))
+            test_order = test_scenario_dict[test_scenario]()
+            socket.send_json(json.dumps(test_order))
 
-            store.close()
-
-        #start,end = get_datetime_index(datetime.datetime.now(),bar_size,hour_min)
-        #ask = df[np.logical_and(df.index>start,df.index<end)]
-        ask = df.copy()
-        ask.index = ask.index + pd.Timedelta(hours=7)
-        del df
-
-
-        now_minute = now.minute
-        now_hour = now.hour
-        decimals = np.where("JPY" in currency, 100, 10000)
-        position = 0
-
-        print('Last Period : '+str(last_period) + " while mext period : " +str((ask.index[-1]+pd.to_timedelta('1min')).ceil(str(bar_size)+hour_min))+ " - ASK INDEX"+str(ask.index[-1])+ '- ASK INDDEX PREVIOUS : '+str(ask.index[-2]))
-        new_period = (ask.index[-1]+pd.to_timedelta('1min')).ceil(str(bar_size)+hour_min)
-        if (last_period != new_period) & (new_period != executed_period):
-            executed_period = new_period
-            ask = ask.resample(str(bar_size) + hour_min, label='right', closed='right', base=0).agg(
-                {'open': 'first', 'low': 'min', 'high': 'max', 'close': 'last'})
-
-            ask = ask.dropna()
-            ask = ask.iloc[-(cluster_slow + 200):]
-            print('Strategy run')
-            print("Close Price : " + str(ask.iloc[-1].close))
-            ask_price = ask.iloc[-1].close
-
-            # if len(experiments) == 1:
-            if position == 0 | position < 0:
-                buy = True
-                action = 'buy'
-                limit_price = ask_price - limit_pips
-
-            elif position > 0:
-                sell = True
-                action = 'sell'
-                limit_price = ask_price + limit_pips
-
-                market_parameters = market_params[0]
-
-            ###SEND QUOTE REQUEST FROM bloomberg_api.py
-            #IN bloomberg_api.py GET QUOTES
-
-
-
-            if action == 'buy':
-                stop_loss = ask_price - market_parameters['loss_pips']/decimals
-                take_profit = ask_price + market_parameters['profit_pips']/decimals
-            elif action == 'sell':
-                stop_loss = ask_price + market_parameters['loss_pips']/decimals
-                take_profit = ask_price - market_parameters['profit_pips']/decimals
-            else:
-                stop_loss = 0
-                take_profit = 0
-
-            lot = market_parameters['lot']
-            dict = {'action': action, 'symbol': symbol + currency, 'lot': lot,
-                    'stop_loss': stop_loss, 'take_profit': take_profit}
-
-            if live_trading==1:
-                print(dict)
-                socket.send_json(json.dumps(dict))
-
-                # Get the reply.
+            # Get the reply.
+            try:
                 message = socket.recv()
                 message = message.decode("utf-8")
-                print ("Received reply "+"[", message+"]")
+                print("Received reply " + "[", message + "]")
+            except:
+                print('no reply received')
+                continue
+
+        else:
+
+            hdf_path = 'minute_data' + SYMBOL + '.h5'
+            lock = filelock.FileLock(hdf_path+".lock")
+
+            with lock.acquire(poll_intervall=0.005):
+                store = pd.HDFStore(hdf_path,
+                                    mode='r')
+                df = store[SYMBOL]
+
+                store.close()
+
+            ask = df.copy()
+            ask.index = ask.index + pd.Timedelta(hours=CUSTOM_TIMEDELTA)
+            del df
+
+            decimals = np.where("JPY" in SYMBOL, 100, 10000)
+
+            print('Last Period : '+str(last_period) + " while mext period : " +str((ask.index[-1]+pd.to_timedelta('1min')).ceil(str(BAR_SIZE)+HOUR_MIN))+
+                  " - ASK INDEX"+str(ask.index[-1])+ '- ASK INDEX PREVIOUS : '+str(ask.index[-2]))
+            new_period = (ask.index[-1]+pd.to_timedelta('1min')).ceil(str(BAR_SIZE)+HOUR_MIN)
+
+            #run criterios
+            #intrabar criterion
+            # if datetime.datetime.fromtimestamp(os.path.getmtime(POSITIONS_PICKLE_PATH)) + datetime.timedelta(seconds=15) >= now:
+            #     time.sleep(5)
+
+            #timeframe criterion
+            time_run_criterion = (last_period != new_period) & (new_period != executed_period)
+
+            if time_run_criterion:
+
+                print(f'RUNNING DUE TO TIMEFRAME')
+                # send dummy message with no_trade = 1 to stop quotes in order to avoid conflict with positions.pickle
+                stop_quotes_message(SYMBOL)
+
+                executed_period = new_period
+                ask = ask.resample(str(BAR_SIZE) + HOUR_MIN, label='right', closed='right', base=0).agg(
+                    {'open': 'first', 'low': 'min', 'high': 'max', 'close': 'last'})
+
+                ask = ask.dropna()
+                ask_price = ask.iloc[-1].close
+                print('Strategy run')
+                print("Close Price : " + str(ask.iloc[-1].close))
+
+                # sleep to catch order handler the cancel quotes
+                time.sleep(5)
+
+                # read last orders
+                with open(POSITIONS_PICKLE_PATH, 'rb')as f:
+                    orders = pickle.load(f)
+                last_position = orders[f'{SYMBOL[:3]}/{SYMBOL[3:]}']['position']
+                quantity = LOT
+                buy_signal = True
+                sell_signal = False
+                if last_position < 0:
+                    quantity = 2 * LOT
+                elif last_position > 0:
+                    quantity = 2 * LOT
+                    buy_signal = False
+                    sell_signal = True
+
+                action, limit_price, stop_loss, take_profit = get_action_limit_sl_tp(buy_signal=buy_signal,
+                                                                                     sell_signal=sell_signal,
+                                                                                     market_parameters=market_params,
+                                                                                     decimals=decimals)
+                #create order dictionary
+                dict = {'action': action, 'symbol': SYMBOL, 'lot': quantity, 'currency':CURRENCY,
+                            'price':limit_price,'stop_loss': stop_loss, 'take_profit': take_profit}
+
+                if LIVE_TRADING == 1:
+                    print(dict)
+                    socket.send_json(json.dumps(dict))
+
+                    # Get the reply.
+                    message = socket.recv()
+                    message = message.decode("utf-8")
+                    print ("Received reply "+"[", message+"]")
+                    print('UPDATING LIMIT PRICE - SLEEPING')
+                    time.sleep(10)
+                else:
+                    1
+
             else:
-                1
-        last_period = (ask.index[-1] + pd.to_timedelta('1min')).ceil(str(bar_size) + hour_min)
+                with open(f'{POSITIONS_PICKLE_PATH}', "rb") as f:
+                    orders = pickle.load(f)
+                if len(orders[f'{SYMBOL[:3]}/{SYMBOL[-3:]}']['trades']) > 0:
+                    last_order = orders[f'{SYMBOL[:3]}/{SYMBOL[-3:]}']['trades'][-1]
+                    # print(pd.to_datetime(last_order['time']) + datetime.timedelta(hours=3) , datetime.timedelta(seconds=40))
+                    if pd.to_datetime(last_order['time']) + datetime.timedelta(hours=3) + datetime.timedelta(seconds=20) > datetime.datetime.now():
+                        # send dummy message with no_trade = 1 to stop quotes in order to avoid conflict with positions.pickle
+                        # sleep to catch order handler the cancel quotes
+                        stop_quotes_message(symbol=SYMBOL)
+                        time.sleep(5)
+                        print(f'RUNNING INTRABAR')
+
+                        intrabar_run_criterion = True
+                        last_position = orders[f'{SYMBOL[:3]}/{SYMBOL[3:]}']['position']
+                        quantity = abs(last_position) + LOT
+                        last_trade_price = orders[f'{SYMBOL[:3]}/{SYMBOL[3:]}']['trades'][-1]['price']
+                        ask_price = float(last_trade_price)
+                        last_position = np.where(last_position <= 0, 2, 1)
+                        buy_signal, sell_signal, exit_signal = limit_strategy(position=int(last_position))
+                        action, limit_price, stop_loss, take_profit = get_action_limit_sl_tp(buy_signal=buy_signal,
+                                                                                             sell_signal=sell_signal,
+                                                                                             market_parameters=market_params,
+                                                                                                 decimals=decimals)
+                        # create order dictionary
+                        dict = {'action': action, 'symbol': SYMBOL, 'lot': quantity, 'currency': CURRENCY,
+                                'price': limit_price, 'stop_loss': stop_loss, 'take_profit': take_profit}
+
+                        if LIVE_TRADING == 1:
+                            print(dict)
+                            socket.send_json(json.dumps(dict))
+
+                            # Get the reply.
+                            message = socket.recv()
+                            message = message.decode("utf-8")
+                            print("Received reply " + "[", message + "]")
+                            print('SETTING LIMIT PRICE INTRABAR - SLEEPING')
+                            time.sleep(10) #to avoid running again
+                        else:
+                            1
+                    else:
+                        pass
+                else:
+                    pass
+
+
+                            # if time_run_criterion or intrabar_run_criterion:
+
+                #send dummy message with no_trade = 1 to stop quotes in order to avoid conflict with positions.pickle
+                # stop_quotes_message(SYMBOL)
+
+                # executed_period = new_period
+                # ask = ask.resample(str(BAR_SIZE) + HOUR_MIN, label='right', closed='right', base=0).agg(
+                #     {'open': 'first', 'low': 'min', 'high': 'max', 'close': 'last'})
+                #
+                # ask = ask.dropna()
+                # print('Strategy run')
+                # print("Close Price : " + str(ask.iloc[-1].close))
+
+                #sleep to catch order handler the cancel quotes
+                # time.sleep(5)
+                #script runs because trade is executed intrabar
+                # if intrabar_run_criterion:
+                    # time.sleep(1)#1
+                    # read last orders
+                    # with open(POSITIONS_PICKLE_PATH, 'rb')as f:
+                    #     orders = pickle.load(f)
+                    # last_position = orders[f'{SYMBOL[:3]}/{SYMBOL[3:]}']['position']
+                    # quantity = abs(last_position) + LOT
+                    # last_trade_price = orders[f'{SYMBOL[:3]}/{SYMBOL[3:]}']['trades'][-1]['price']
+                    # ask_price = float(last_trade_price)
+                    # print(f'RUNNING INTRABAR')
+                    # last_position = np.where(last_position <= 0 ,2,1)
+                    # buy_signal, sell_signal, exit_signal = limit_strategy(position=int(last_position))
+                #script runs because of timeframe
+                # elif time_run_criterion and (not intrabar_run_criterion):
+                    # print(f'RUNNING DUE TO TIMEFRAME')
+                    #time sleep to catch any possible changes close to timeframe bar
+                    # time.sleep(5)
+
+                    # read last orders
+                    # with open(POSITIONS_PICKLE_PATH, 'rb')as f:
+                    #     orders = pickle.load(f)
+                    # last_position = orders[f'{SYMBOL[:3]}/{SYMBOL[3:]}']['position']
+                    # ask_price = ask.iloc[-1].close
+                    # quantity = 2 * LOT
+                    # if last_position < 0:
+                    #     buy_signal = False
+                    #     sell_signal = True
+                    # elif last_position > 0:
+                    #     buy_signal = True
+                    #     sell_signal = False
+                    # else:
+                    #     quantity = LOT
+                    #     buy_signal = True
+                    #     sell_signal = False
+
+
+                # #create order dictionary
+                # dict = {'action': action, 'symbol': SYMBOL, 'lot': quantity, 'currency':CURRENCY,
+                #             'price':limit_price,'stop_loss': stop_loss, 'take_profit': take_profit}
+                #
+                # if LIVE_TRADING == 1:
+                #     print(dict)
+                #     socket.send_json(json.dumps(dict))
+                #
+                #     # Get the reply.
+                #     message = socket.recv()
+                #     message = message.decode("utf-8")
+                #     print ("Received reply "+"[", message+"]")
+                # else:
+                #     1
+            last_period = (ask.index[-1] + pd.to_timedelta('1min')).ceil(str(BAR_SIZE) + HOUR_MIN)
+
+
+def test_scenario_1():
+    '''
+    Client requests quotes from two LPs,
+    client sends trade request to one, LP fills
+    '''
+    print(f'TESTING SCENARIO 1...')
+    action = 'buy'
+    SYMBOL = 'EURCAD'
+    CURRENCY = 'EUR'
+    LOT = 1000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_2():
+    '''
+    Client requests quotes from two LPs,
+    after quotes arrive,
+    client sends quote response pass
+    '''
+    #resend scenario_1 --> trade will pass because it is in the same direction
+    print(f'TESTING SCENARIO 3')
+    dict = test_scenario_1()
+    return dict
+
+def test_scenario_3():
+    '''
+    Client requests quotes two way quotes from two LPs,
+    both dealers fail to respond to quote request and do not quote,
+    client cancels after 30sec
+    '''
+    print(f'TESTING SCENARIO 3')
+    action = 'buy'
+    SYMBOL = 'EURUSD'
+    CURRENCY = 'EUR'
+    LOT = 1137
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_4():
+    '''
+    Client requests quotes from two LPs,
+    all LPs reject
+    '''
+    print(f'TESTING SCENARIO 4...')
+    action = 'buy'
+    SYMBOL = 'EURAUD'
+    CURRENCY = 'EUR'
+    LOT = 1779
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_5():
+    '''
+    Client requests quotes from two LPs,
+    client fails to send trade request to one LP,
+    no trade is done
+    '''
+    print(f'TESTING SCENARIO 5...')
+    action = 'buy'
+    SYMBOL = 'EURCAD'
+    CURRENCY = 'EUR'
+    LOT = 1000000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_6():
+    '''
+    Client requests quotes from two LPs,
+    one LP rejects,
+    '''
+    print(f'TESTING SCENARIO 6...')
+    action = 'buy'
+    SYMBOL = 'EURCAD'
+    CURRENCY = 'EUR'
+    LOT = 1779
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_7():
+    '''
+    Client requests quotes from two LPs,
+    client sends trade request to one,
+    dealer rejects last look,
+    '''
+    print(f'TESTING ORDER 7...LP REJECT LAST LOOK')
+    action = 'buy'
+    SYMBOL = 'EURCHF'
+    CURRENCY = 'EUR'
+    LOT = 5241
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_8():
+    '''
+    Client requests quotes from two LPs,
+    client sends trade request to one,
+    LP times out,
+    '''
+    print(f'TESTING ORDER 8...LP TIME OUT')
+    action = 'buy'
+    SYMBOL = 'GBPUSD'
+    CURRENCY = 'GBP'
+    LOT = 6531
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_9():
+    '''
+    '''
+    print(f'TESTING ORDER 9...')
+    pass
+
+def test_scenario_10():
+    '''
+    Client requests two way quotes from two LPs,
+    after 10s LPs cancel all quotes,
+    no trade is done
+    '''
+    print(f'TESTING ORDER 10...TWO WAY')
+    action = 'none'
+    SYMBOL = 'EURCAD'
+    CURRENCY = 'EUR'
+    LOT = 1885
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_11():
+    '''
+    '''
+    print(f'TESTING ORDER 11...LP TIME OUT')
+    pass
+
+def test_scenario_12():
+    '''
+    Client requests quotes from two LPs,
+    client sends trade request with the wrong side to on,
+    LP rejects, client cancels
+    '''
+    print(f'TESTING ORDER 12...WRONG SIDE')
+    action = 'buy'
+    SYMBOL = 'GBPCAD'
+    CURRENCY = 'GBP'
+    LOT = 1000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_13():
+    '''
+    Client requests two way quotes from two LPs,
+    client sends trade request to one,
+    LP fills
+    '''
+    print(f'TESTING ORDER 13...TWO WAY QUOTES')
+    action = 'none'
+    SYMBOL = 'GBPCAD'
+    CURRENCY = 'CAD'
+    LOT = 1000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_14():
+    '''
+    Send BUY order in base CURRENCY
+    '''
+    print(f'TESTING ORDER 14...BUY order in BASE CURRENCY')
+    action = 'buy'
+    SYMBOL = 'EURUSD'
+    CURRENCY = 'EUR'
+    LOT = 1000000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_15():
+    '''
+    Send SELL order in base CURRENCY
+    '''
+    print(f'TESTING ORDER 14...SELL order in BASE CURRENCY')
+    action = 'sell'
+    SYMBOL = 'EURUSD'
+    CURRENCY = 'EUR'
+    LOT = 1000000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 0
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_16():
+    '''
+    Send BUY order in secondary CURRENCY
+    '''
+    print(f'TESTING ORDER 16...BUY order in SECONDARY CURRENCY')
+    action = 'buy'
+    SYMBOL = 'EURUSD'
+    CURRENCY = 'USD'
+    LOT = 1000000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 0
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
+def test_scenario_17():
+    '''
+    Send SELL order in secondary CURRENCY
+    '''
+    print(f'TESTING ORDER 14...BUY order in SECONDARY CURRENCY')
+    action = 'sell'
+    SYMBOL = 'EURUSD'
+    CURRENCY = 'USD'
+    LOT = 1000000
+    STOP_LOSS = 10000
+    TAKE_PROFIT = 10000
+    LIMIT_PRICE = 999
+    dict = {'action': action, 'symbol': SYMBOL, 'lot': LOT,
+            'currency':CURRENCY,'stop_loss': STOP_LOSS, 'take_profit': TAKE_PROFIT,
+            'price':LIMIT_PRICE}
+    print(dict)
+    return dict
+
 if __name__ == "__main__":
     main()
