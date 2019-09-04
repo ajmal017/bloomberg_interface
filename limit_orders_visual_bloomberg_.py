@@ -12,7 +12,7 @@ from datetime import datetime
 import pickle
 
 port = "9995"
-host_connect = "10.10.1.34"
+host_connect = "10.10.1.33"
 instruments_pairs_dictionary = {}
 if len(sys.argv) > 1:
     port =  sys.argv[1]
@@ -22,7 +22,7 @@ if len(sys.argv) > 2:
     port1 =  sys.argv[2]
     int(port1)
 action_switch = 0
-POSITIONS_PICKLE_PATH = r'C:\Users\ak\repos\bloomberg_interface/positions.pickle'
+POSITIONS_PICKLE_PATH = r'positions.pickle'
 
 symbols = {"EURUSD" :("EUR",'USD'), 'EURGBP': ('EUR','GBP'), 'EURJPY': ('EUR','JPY'),'EURCHF':('EUR','CHF'), "EURCAD": ("EUR","CAD"), 'EURAUD': ('EUR','AUD'),'EURNZD':('EUR','NZD'),
                  "GBPUSD": ("GBP",'USD'),'USDJPY' :('USD','JPY'),'USDCHF':('USD','CHF'),'USDCAD':('USD','CAD'),'AUDUSD':('AUD','USD'),'NZDUSD':('NZD','USD'),

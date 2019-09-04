@@ -10,7 +10,7 @@ import zmq
 import sys
 import filelock
 
-port = "9998"
+
 instruments_pairs_dictionary = {}
 if len(sys.argv) > 1:
     port =  sys.argv[1]
@@ -18,28 +18,12 @@ if len(sys.argv) > 1:
 if len(sys.argv) > 2:
     port1 =  sys.argv[2]
     int(port1)
-SYMBOL = 'CHFJPY'
-CURRENCY = 'CHF'
-print(SYMBOL)
-LIVE_TRADING = 1
-TEST_TRADING = 0
-LOT = 10000
-BAR_SIZE = 5
-HOUR_MIN = 'T'
-LOSS_PIPS = 10000
-PROFIT_PIPS = 10000
-LIMIT_PIPS = 3
-CUSTOM_TIMEDELTA = 7
-POSITIONS_PICKLE_PATH = r'C:\Users\ak\repos\bloomberg_interface/positions.pickle'
+
+POSITIONS_PICKLE_PATH = 'positions.pickle'
 
 #We set a instrument ID in order to create contract and get the appropriate results in Historical and Real Bars Prices
 #The txt file is InstrumentsTickersPairs
-market_params = [{'LOT': LOT, 'profit_pips': PROFIT_PIPS, 'loss_pips': LOSS_PIPS}]
 
-print(f'SYMBOL:{SYMBOL}')
-print(f'CURRENCY:{CURRENCY}')
-print(f'LIMIT PIPS:{LIMIT_PIPS}')
-print(market_params)
 
 def limit_strategy(position):
     exit_signal = False
@@ -54,19 +38,37 @@ def limit_strategy(position):
     return buy_signal, sell_signal, exit_signal
 
 
-def main():
+def main(args=None):
     global duration_string, bar_size_setting, what_to_show, initialRequest
     import time
     import json
     file = "D:/Data/"
     import os
     import gc
-    os.chdir(os.path.dirname(file))
+    port = args.port
+    SYMBOL = args.symbol
+    CURRENCY = args.currency
+    LIVE_TRADING = args.livetrading
+    TEST_TRADING = args.testtrading
+    LOT = args.lot
+    BAR_SIZE = args.barsize
+    HOUR_MIN = args.minhour
+    LOSS_PIPS = args.losspips
+    PROFIT_PIPS =args.profitpips
+    LIMIT_PIPS = args.limitpips
+    CUSTOM_TIMEDELTA = args.customtimedelta
+    market_params = [{'LOT': LOT, 'profit_pips': PROFIT_PIPS, 'loss_pips': LOSS_PIPS}]
+
+    print(f'SYMBOL:{SYMBOL}')
+    print(f'CURRENCY:{CURRENCY}')
+    print(f'LIMIT PIPS:{LIMIT_PIPS}')
+    print(market_params)
+    # os.chdir(os.path.dirname(file))
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
-    socket.connect('tcp://10.10.1.34:%s' % port)
+    socket.connect('tcp://10.10.1.33:%s' % port)
     if len(sys.argv) > 2:
-        socket.connect('tcp://10.10.1.34:%s' % port1)
+        socket.connect('tcp://10.10.1.33:%s' % port1)
 
     def stop_quotes_message(symbol):
         dict = {'action': 'cancel_quotes', 'symbol': symbol, 'lot': 0, 'currency': None,
@@ -139,7 +141,7 @@ def main():
 
         else:
 
-            hdf_path = 'minute_data' + SYMBOL + '.h5'
+            hdf_path = 'D:/Data/minute_data' + SYMBOL + '.h5'
             lock = filelock.FileLock(hdf_path+".lock")
 
             with lock.acquire(poll_intervall=0.005):
@@ -628,4 +630,34 @@ def test_scenario_17():
     return dict
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    port = "9998"
+    SYMBOL = 'AUDCAD'
+    CURRENCY = 'AUD'
+    LIVE_TRADING = 1
+    TEST_TRADING = 0
+    LOT = 10000
+    BAR_SIZE = 5
+    HOUR_MIN = 'T'
+    LOSS_PIPS = 10000
+    PROFIT_PIPS = 10000
+    LIMIT_PIPS = 2
+    CUSTOM_TIMEDELTA = 7
+    parser = argparse.ArgumentParser(description='Arguements for running limit strategy')
+    parser.add_argument('--port', type=str, default="9998")
+    parser.add_argument('--symbol', type=str, default="AUDCAD")
+    parser.add_argument('--currency', type=str, default="AUD")
+    parser.add_argument('--minhour', type=str, default="T")
+    parser.add_argument('--livetrading', type=int, default=1)
+    parser.add_argument('--testtrading', type=int, default=0)
+    parser.add_argument('--lot', type=int, default=10000)
+    parser.add_argument('--barsize', type=int, default=5)
+    parser.add_argument('--losspips', type=int, default=10000)
+    parser.add_argument('--profitpips', type=int, default=10000)
+    parser.add_argument('--limitpips', type=int, default=2)
+    parser.add_argument('--customtimedelta', type=int, default=7)
+
+    args = parser.parse_args()
+    print(args)
+    main(args=args)
