@@ -12,7 +12,7 @@ from datetime import datetime
 import pickle
 
 port = "9995"
-host_connect = "10.10.1.33"
+host_connect = "127.0.0.1"
 instruments_pairs_dictionary = {}
 if len(sys.argv) > 1:
     port =  sys.argv[1]
