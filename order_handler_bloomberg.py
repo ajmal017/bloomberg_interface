@@ -15,7 +15,7 @@ import filelock
 from pandas.tseries.offsets import BDay
 import gc
 import filelock
-
+WRITE_PATH = "C:/live/fix_bloomberg"
 #DEALERS_DICT: DEALER_ID --> PARTY ROLE
 DEALERS_DICT = {'7613723':11,
                 'DOR1':1,
@@ -42,7 +42,7 @@ FLOAT_FORMAT = '%.5f'
 DATE_FORMAT = '%Y%m%d%H%M'
 prices = []
 port = "9998"
-host = '10.10.1.33'
+host = '127.0.0.1'
 # account = 'DU517095'
 account = 'DU194566'
 contract_dict = {"EURUSD" :("EUR",'USD'), 'EURGBP': ('EUR','GBP'), 'EURJPY': ('EUR','JPY'),'EURCHF':('EUR','CHF'), "EURCAD": ("EUR","CAD"), 'EURAUD': ('EUR','AUD'),'EURNZD':('EUR','NZD'),
@@ -72,12 +72,12 @@ class Application_Order_Handler(Application):
 
         #### Uncomment to initialize the positions pickle
         for contract in contract_dict:
-            self.symbol_positions[f'{contract[:3]}/{contract[3:]}'] = dict(position=0, trades=[])
             self.quotes[f'{contract[:3]}/{contract[3:]}'] = dict(offer_prices={}, bid_prices={})
             self.no_trade[f'{contract[:3]}/{contract[3:]}'] = 1
             self.limit_price[f'{contract[:3]}/{contract[3:]}'] = 0
-        with open('positions.pickle', 'wb') as f:
-            pickle.dump(self.symbol_positions, f, pickle.HIGHEST_PROTOCOL)
+        #     self.symbol_positions[f'{contract[:3]}/{contract[3:]}'] = dict(position=0, trades=[])
+        # with open('positions.pickle', 'wb') as f:
+        #     pickle.dump(self.symbol_positions, f, pickle.HIGHEST_PROTOCOL)
 
         with open('positions.pickle','rb' )as f:
             self.symbol_positions = pickle.load(f)
@@ -371,7 +371,7 @@ class Application_Order_Handler(Application):
                     now = datetime.datetime.now().strftime('%Y%m%d')
                     tmp_orders = pickle.load(f)
                     tmp_orders = pd.DataFrame.from_dict(tmp_orders[symbol]['trades'], dtype=str)
-                    tmp_orders.to_csv(f'd:/FIXtrades{now}{symbol.replace("/","")}.csv')
+                    tmp_orders.to_csv(f'{WRITE_PATH}/FIXtrades{now}{symbol.replace("/","")}.csv')
                 # if os.path.exists(f'd:/fix_bloomberg/FIXtrades{now}{symbol.replace("/","")}.csv'):
                 #     tmp_csv = pd.read_csv(f'd:/fix_bloomberg/FIXtrades{now}{symbol.replace("/","")}.csv')
                 #     tmp_csv = pd.concat([tmp_csv,tmp_orders],axis=0,ignore_index=True)
@@ -651,7 +651,7 @@ def main():
                 time.sleep(10)
                 now = datetime.datetime.now()
                 print(now)
-                hdf_path = f'd:/Data/minute_data{symbol}.h5'
+                hdf_path = f'C:/Data/minute_data{symbol}.h5'
                 # hdf_path = 'minute_data' + symbol + currency + '.h5'
                 lock = filelock.FileLock(hdf_path + ".lock")
 
