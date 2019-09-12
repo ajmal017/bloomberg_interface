@@ -42,7 +42,7 @@ def main(args=None):
     global duration_string, bar_size_setting, what_to_show, initialRequest
     import time
     import json
-    file = "D:/Data/"
+    file = "C:/Data/"
     import os
     import gc
     port = args.port
@@ -66,9 +66,9 @@ def main(args=None):
     # os.chdir(os.path.dirname(file))
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
-    socket.connect('tcp://10.10.1.33:%s' % port)
+    socket.connect('tcp://127.0.0.1:%s' % port)
     if len(sys.argv) > 2:
-        socket.connect('tcp://10.10.1.33:%s' % port1)
+        socket.connect('tcp://127.0.0.1:%s' % port1)
 
     def stop_quotes_message(symbol):
         dict = {'action': 'cancel_quotes', 'symbol': symbol, 'lot': 0, 'currency': None,
@@ -141,7 +141,7 @@ def main(args=None):
 
         else:
 
-            hdf_path = 'D:/Data/minute_data' + SYMBOL + '.h5'
+            hdf_path = 'C:/Data/minute_data' + SYMBOL + '.h5'
             lock = filelock.FileLock(hdf_path+".lock")
 
             with lock.acquire(poll_intervall=0.005):
@@ -228,7 +228,8 @@ def main(args=None):
                 if len(orders[f'{SYMBOL[:3]}/{SYMBOL[-3:]}']['trades']) > 0:
                     last_order = orders[f'{SYMBOL[:3]}/{SYMBOL[-3:]}']['trades'][-1]
                     # print(pd.to_datetime(last_order['time']) + datetime.timedelta(hours=3) , datetime.timedelta(seconds=40))
-                    if pd.to_datetime(last_order['time']) + datetime.timedelta(hours=3) + datetime.timedelta(seconds=20) > datetime.datetime.now():
+                    if pd.to_datetime(last_order['time']) + datetime.timedelta(seconds=20) > datetime.datetime.utcnow():
+                    # if pd.to_datetime(last_order['time']) + datetime.timedelta(hours=3) + datetime.timedelta(seconds=20) > datetime.datetime.now():
                         # send dummy message with no_trade = 1 to stop quotes in order to avoid conflict with positions.pickle
                         # sleep to catch order handler the cancel quotes
                         stop_quotes_message(symbol=SYMBOL)
@@ -632,22 +633,11 @@ def test_scenario_17():
 if __name__ == "__main__":
     import argparse
 
-    port = "9998"
-    SYMBOL = 'AUDCAD'
-    CURRENCY = 'AUD'
-    LIVE_TRADING = 1
-    TEST_TRADING = 0
-    LOT = 10000
-    BAR_SIZE = 5
-    HOUR_MIN = 'T'
-    LOSS_PIPS = 10000
-    PROFIT_PIPS = 10000
-    LIMIT_PIPS = 2
-    CUSTOM_TIMEDELTA = 7
+
     parser = argparse.ArgumentParser(description='Arguements for running limit strategy')
     parser.add_argument('--port', type=str, default="9998")
-    parser.add_argument('--symbol', type=str, default="AUDCAD")
-    parser.add_argument('--currency', type=str, default="AUD")
+    parser.add_argument('--symbol', type=str, default="CHFJPY")
+    parser.add_argument('--currency', type=str, default="CHF")
     parser.add_argument('--minhour', type=str, default="T")
     parser.add_argument('--livetrading', type=int, default=1)
     parser.add_argument('--testtrading', type=int, default=0)
@@ -655,8 +645,8 @@ if __name__ == "__main__":
     parser.add_argument('--barsize', type=int, default=5)
     parser.add_argument('--losspips', type=int, default=10000)
     parser.add_argument('--profitpips', type=int, default=10000)
-    parser.add_argument('--limitpips', type=int, default=2)
-    parser.add_argument('--customtimedelta', type=int, default=7)
+    parser.add_argument('--limitpips', type=int, default=4)
+    parser.add_argument('--customtimedelta', type=int, default=6)
 
     args = parser.parse_args()
     print(args)
