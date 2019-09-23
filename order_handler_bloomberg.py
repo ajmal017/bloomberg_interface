@@ -16,26 +16,37 @@ from pandas.tseries.offsets import BDay
 import gc
 import filelock
 WRITE_PATH = "C:/live/fix_bloomberg"
+WARNINGS_PICKLE_PATH = r'warnings.pickle'
 #DEALERS_DICT: DEALER_ID --> PARTY ROLE
 DEALERS_DICT = {'7613723':11,
                 'DOR1':1,
                 'DOR2':1,
                 # 'BGD1':1
                 }
-HOLIDAYS_DICT = {'CAD':['20190902','20191014','20191110','20191224','20191225','20191230','20191231'],
-                      'USD':['20190902','20191014','20191018','20191025','20191127','20191128','20191223',
-                             '20191224','20191225','20191230','20191231','20200101'],
-                      'CHF':['20190902','20190905','20190909','20190915','20190916','20190925','20191031','20191207',
-                             '20191224','20191225','20191230','20191231','20200101'],
-                      'EUR':['20190902','20190909','20190911','20190915','20190917','20190919','20190920','20191003','20191004',
-                             '20191009','20191012','20191030','20191031','20191101','20191108','20191110',
-                             '20191119','20191205','20191206','20191207','20191208','20191224','20191225','20191231'],
-                      'JPY':['20190916','20190923','20191014','20191022','20191102','20191103','20191122','20191231'],
-                      'NZD':['20190923','20191025','20191027','20191103','20191114','20191201','20191224',
-                             '20191225','20191231','20200101'],
-                      'AUD':['20190902','20190927','20190930','20191007','20191104','20191223','20191224',
-                             '20191225','20191230','20191231'],
-                      'GBP':['20190902','20191201','20191224','20191225','20191231','20200101']
+# HOLIDAYS_DICT = {'CAD':['20190902','20191014','20191110','20191224','20191225','20191230','20191231'],
+#                       'USD':['20190902','20191014','20191018','20191025','20191127','20191128','20191223',
+#                              '20191224','20191225','20191230','20191231','20200101'],
+#                       'CHF':['20190902','20190905','20190909','20190915','20190916','20190925','20191031','20191207',
+#                              '20191224','20191225','20191230','20191231','20200101'],
+#                       'EUR':['20190902','20190909','20190911','20190915','20190917','20190919','20190920','20191003','20191004',
+#                              '20191009','20191012','20191030','20191031','20191101','20191108','20191110',
+#                              '20191119','20191205','20191206','20191207','20191208','20191224','20191225','20191231'],
+#                       'JPY':['20190916','20190923','20191014','20191022','20191102','20191103','20191122','20191231'],
+#                       'NZD':['20190923','20191025','20191027','20191103','20191114','20191201','20191224',
+#                              '20191225','20191231','20200101'],
+#                       'AUD':['20190902','20190927','20190930','20191007','20191104','20191223','20191224',
+#                              '20191225','20191230','20191231'],
+#                       'GBP':['20190902','20191201','20191224','20191225','20191231','20200101']
+#                       }
+
+HOLIDAYS_DICT = {'CAD':['20191014','20191015','20191111','20191112'],
+                      'USD':['20191014','20191015','20191111','20191112','20191128'],
+                      'CHF':[''],
+                      'EUR':[''],
+                      'JPY':['20190916','20190923','20190924','20191014','20191015','20191022','20191104','20191105','20191123'],
+                      'NZD':['20191028'],
+                      'AUD':['20191007', '20191008'],
+                      'GBP':['']
                       }
 DEALERS_NO = len([dealer for dealer, role in DEALERS_DICT.items() if role == 1])
 FLOAT_FORMAT = '%.5f'
@@ -69,6 +80,7 @@ class Application_Order_Handler(Application):
         self.no_trade = dict()
         self.limit_price = dict()
         self.quotes = dict()
+        self.warnings = dict()
 
         #### Uncomment to initialize the positions pickle
         for contract in contract_dict:
@@ -320,6 +332,9 @@ class Application_Order_Handler(Application):
 
         #QuoteRequestReject
         if msg_type == 'AG':
+            self.warnings[message.getField(131)] = message.getField(58)
+            with open('warnings.pickle','wb') as f:
+                pickle.dump(self.warnings, f, pickle.HIGHEST_PROTOCOL)
             print('RECEIVED QuoteRequestReject - LPs REJECTED QUOTE REQUEST')
 
         #Execution report
@@ -411,8 +426,12 @@ class Application_Order_Handler(Application):
         quote_resp.setField(fix.StringField(60,datetime.datetime.utcnow().strftime('%Y%m%d-%H:%M:%S')))#60
         # quote_resp.setField(fix.TransactTime(1))#60
         quote_resp.setField(fix.SettlType('0'))#63
-        settl_date = datetime.datetime.utcnow()+BDay(n=2)
-        while settl_date.strftime('%Y%m%d') in HOLIDAYS_DICT[symbol[:3]]:
+        # settl_date = datetime.datetime.utcnow() + BDay(n=2)
+        if ((datetime.datetime.utcnow() - datetime.timedelta(hours = 4)).hour < 17) or ((datetime.datetime.utcnow() - datetime.timedelta(hours = 4)).weekday() == 6):
+            settl_date = datetime.datetime.utcnow()+BDay(n=2)
+        else:
+            settl_date = datetime.datetime.utcnow() + BDay(n=3)
+        while (settl_date.strftime('%Y%m%d') in HOLIDAYS_DICT[symbol[:3]]) or (settl_date.strftime('%Y%m%d') in HOLIDAYS_DICT[symbol[-3:]]) :
             settl_date +=  BDay(n=1)
         quote_resp.setField(fix.SettlDate(settl_date.strftime('%Y%m%d')))#64
 
@@ -494,8 +513,12 @@ class Application_Order_Handler(Application):
         group_146.setField(fix.StringField(167,'FXSPOT'))
         group_146.setField(fix.IntField(460,4))
         group_146.setField(fix.SettlType('0'))#SettlType
-        settl_date = datetime.datetime.utcnow()+BDay(n=2)
-        while settl_date.strftime('%Y%m%d') in HOLIDAYS_DICT[symbol[:3]]:
+        # settl_date = datetime.datetime.utcnow()+BDay(n=2)
+        if ((datetime.datetime.utcnow() - datetime.timedelta(hours = 4)).hour < 17) or ((datetime.datetime.utcnow() - datetime.timedelta(hours = 4)).weekday() == 6):
+            settl_date = datetime.datetime.utcnow()+BDay(n=2)
+        else:
+            settl_date = datetime.datetime.utcnow() + BDay(n=3)
+        while (settl_date.strftime('%Y%m%d') in HOLIDAYS_DICT[symbol[:3]]) or (settl_date.strftime('%Y%m%d') in HOLIDAYS_DICT[symbol[-3:]]):
             settl_date +=  BDay(n=1)
         group_146.setField(fix.SettlDate(settl_date.strftime('%Y%m%d')))#SettlDate
         group_146.setField(fix.OrderQty(quantity))#38 - Qty
